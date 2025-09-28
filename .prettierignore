@@ -1,0 +1,11 @@
+# Ignore Django templates from formatting
+templates/
+*.html
+
+# Ignore Python files that might conflict
+*.py
+
+# Ignore other files
+node_modules/
+.env
+*.sqlite3
