@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}Kikodo CRM{% endblock %}</title>
+
+    <!-- Bootstrap CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <!-- Font Awesome -->
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      rel="stylesheet"
+    />
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+      :root {
+        --airtable-blue: #18b0ff;
+        --airtable-purple: #7b68ee;
+        --airtable-green: #00d4aa;
+        --airtable-orange: #ff9500;
+        --airtable-red: #ff3b30;
+        --airtable-gray-50: #fafafa;
+        --airtable-gray-100: #f5f5f5;
+        --airtable-gray-200: #e5e5e5;
+        --airtable-gray-300: #d4d4d4;
+        --airtable-gray-400: #a3a3a3;
+        --airtable-gray-500: #737373;
+        --airtable-gray-600: #525252;
+        --airtable-gray-700: #404040;
+        --airtable-gray-800: #262626;
+        --airtable-gray-900: #171717;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        background-color: var(--airtable-gray-50);
+        color: var(--airtable-gray-800);
+        line-height: 1.5;
+      }
+
+      .sidebar {
+        min-height: 100vh;
+        background: white;
+        border-right: 1px solid var(--airtable-gray-200);
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05);
+      }
+
+      .sidebar .nav-link {
+        color: var(--airtable-gray-600);
+        border-radius: 6px;
+        margin: 2px 8px;
+        padding: 8px 12px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+      }
+
+      .sidebar .nav-link:hover {
+        color: var(--airtable-gray-800);
+        background-color: var(--airtable-gray-100);
+      }
+
+      .sidebar .nav-link.active {
+        color: var(--airtable-blue);
+        background-color: rgba(24, 176, 255, 0.1);
+      }
+
+      .sidebar .nav-link i {
+        margin-right: 8px;
+        width: 16px;
+        text-align: center;
+      }
+
+      .main-content {
+        background-color: var(--airtable-gray-50);
+        min-height: 100vh;
+      }
+
+      .page-header {
+        background: white;
+        border-bottom: 1px solid var(--airtable-gray-200);
+        padding: 16px 24px;
+        margin-bottom: 24px;
+      }
+
+      .page-title {
+        font-size: 24px;
+        font-weight: 600;
+        color: var(--airtable-gray-900);
+        margin: 0;
+      }
+
+      .card {
+        border: 1px solid var(--airtable-gray-200);
+        border-radius: 8px;
+        background: white;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+
+      .card-header {
+        background: white;
+        border-bottom: 1px solid var(--airtable-gray-200);
+        border-radius: 8px 8px 0 0 !important;
+        padding: 16px 20px;
+        font-weight: 600;
+        color: var(--airtable-gray-800);
+      }
+
+      .card-body {
+        padding: 20px;
+      }
+
+      .btn-primary {
+        background-color: var(--airtable-blue);
+        border-color: var(--airtable-blue);
+        border-radius: 6px;
+        font-weight: 500;
+        padding: 8px 16px;
+      }
+
+      .btn-primary:hover {
+        background-color: #0ea5e9;
+        border-color: #0ea5e9;
+      }
+
+      .btn-secondary {
+        background-color: white;
+        border-color: var(--airtable-gray-300);
+        color: var(--airtable-gray-700);
+        border-radius: 6px;
+        font-weight: 500;
+      }
+
+      .btn-secondary:hover {
+        background-color: var(--airtable-gray-100);
+        border-color: var(--airtable-gray-400);
+        color: var(--airtable-gray-800);
+      }
+
+      .metric-card {
+        background: white;
+        border: 1px solid var(--airtable-gray-200);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 16px;
+        transition: all 0.2s ease;
+      }
+
+      .metric-card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      }
+
+      .metric-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--airtable-gray-900);
+        margin-bottom: 4px;
+      }
+
+      .metric-label {
+        font-size: 14px;
+        color: var(--airtable-gray-500);
+        font-weight: 500;
+      }
+
+      .table {
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid var(--airtable-gray-200);
+      }
+
+      .table thead th {
+        background-color: var(--airtable-gray-100);
+        border-bottom: 1px solid var(--airtable-gray-200);
+        font-weight: 600;
+        color: var(--airtable-gray-700);
+        padding: 12px 16px;
+      }
+
+      .table tbody td {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--airtable-gray-200);
+        vertical-align: middle;
+      }
+
+      .table tbody tr:hover {
+        background-color: var(--airtable-gray-50);
+      }
+
+      .badge {
+        border-radius: 4px;
+        font-weight: 500;
+        padding: 4px 8px;
+        font-size: 12px;
+      }
+
+      .badge.bg-primary {
+        background-color: var(--airtable-blue) !important;
+      }
+
+      .badge.bg-info {
+        background-color: var(--airtable-purple) !important;
+      }
+
+      .badge.bg-success {
+        background-color: var(--airtable-green) !important;
+      }
+
+      .badge.bg-warning {
+        background-color: var(--airtable-orange) !important;
+      }
+
+      .badge.bg-danger {
+        background-color: var(--airtable-red) !important;
+      }
+
+      .form-control {
+        border: 1px solid var(--airtable-gray-300);
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 14px;
+      }
+
+      .form-control:focus {
+        border-color: var(--airtable-blue);
+        box-shadow: 0 0 0 3px rgba(24, 176, 255, 0.1);
+      }
+
+      .alert {
+        border-radius: 6px;
+        border: none;
+        padding: 12px 16px;
+      }
+
+      .alert-success {
+        background-color: rgba(0, 212, 170, 0.1);
+        color: var(--airtable-green);
+      }
+
+      .alert-danger {
+        background-color: rgba(255, 59, 48, 0.1);
+        color: var(--airtable-red);
+      }
+
+      .alert-warning {
+        background-color: rgba(255, 149, 0, 0.1);
+        color: var(--airtable-orange);
+      }
+
+      .alert-info {
+        background-color: rgba(24, 176, 255, 0.1);
+        color: var(--airtable-blue);
+      }
+
+      /* Airtable-style data grid */
+      .data-grid {
+        background: white;
+        border: 1px solid var(--airtable-gray-200);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .data-grid-header {
+        background: var(--airtable-gray-100);
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--airtable-gray-200);
+        font-weight: 600;
+        color: var(--airtable-gray-700);
+      }
+
+      .data-grid-row {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--airtable-gray-200);
+        display: flex;
+        align-items: center;
+      }
+
+      .data-grid-row:hover {
+        background-color: var(--airtable-gray-50);
+      }
+
+      .data-grid-row:last-child {
+        border-bottom: none;
+      }
+
+      /* Status indicators */
+      .status-indicator {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 8px;
+      }
+
+      .status-active {
+        background-color: var(--airtable-green);
+      }
+      .status-pending {
+        background-color: var(--airtable-orange);
+      }
+      .status-inactive {
+        background-color: var(--airtable-gray-400);
+      }
+      .status-completed {
+        background-color: var(--airtable-blue);
+      }
+
+      /* Logo styling */
+      .logo {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--airtable-blue);
+        text-decoration: none;
+      }
+
+      .logo:hover {
+        color: var(--airtable-blue);
+        text-decoration: none;
+      }
+    </style>
+
+    {% block extra_css %}{% endblock %}
+  </head>
+  <body>
+    <div class="container-fluid">
+      <div class="row">
+        <!-- Sidebar -->
+        <nav class="col-md-3 col-lg-2 d-md-block sidebar collapse">
+          <div class="position-sticky pt-3">
+            <div class="text-center mb-4 px-3">
+              <a href="{% url 'crm:dashboard' %}" class="logo">
+                <i class="fas fa-rocket"></i> Kikodo CRM
+              </a>
+            </div>
+
+            <ul class="nav flex-column">
+              <li class="nav-item">
+                <a
+                  class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}"
+                  href="{% url 'crm:dashboard' %}"
+                >
+                  <i class="fas fa-tachometer-alt"></i> Dashboard
+                </a>
+              </li>
+              <li class="nav-item">
+                <a
+                  class="nav-link {% if 'contact' in request.resolver_match.url_name %}active{% endif %}"
+                  href="{% url 'crm:contact_list' %}"
+                >
+                  <i class="fas fa-users"></i> Contacts
+                </a>
+              </li>
+              <li class="nav-item">
+                <a
+                  class="nav-link {% if 'company' in request.resolver_match.url_name %}active{% endif %}"
+                  href="{% url 'crm:company_list' %}"
+                >
+                  <i class="fas fa-building"></i> Companies
+                </a>
+              </li>
+              <li class="nav-item">
+                <a
+                  class="nav-link {% if 'deal' in request.resolver_match.url_name %}active{% endif %}"
+                  href="{% url 'crm:deal_list' %}"
+                >
+                  <i class="fas fa-handshake"></i> Deals
+                </a>
+              </li>
+              <li class="nav-item">
+                <a
+                  class="nav-link {% if 'activity' in request.resolver_match.url_name %}active{% endif %}"
+                  href="{% url 'crm:activity_list' %}"
+                >
+                  <i class="fas fa-tasks"></i> Activities
+                </a>
+              </li>
+              <li class="nav-item">
+                <a
+                  class="nav-link {% if 'analytics' in request.resolver_match.url_name %}active{% endif %}"
+                  href="{% url 'analytics:dashboard' %}"
+                >
+                  <i class="fas fa-chart-bar"></i> Analytics
+                </a>
+              </li>
+              <li class="nav-item">
+                <a
+                  class="nav-link {% if 'report' in request.resolver_match.url_name %}active{% endif %}"
+                  href="{% url 'analytics:reports' %}"
+                >
+                  <i class="fas fa-file-alt"></i> Reports
+                </a>
+              </li>
+              <li class="nav-item mt-4">
+                <a class="nav-link" href="{% url 'admin:index' %}">
+                  <i class="fas fa-cog"></i> Admin
+                </a>
+              </li>
+            </ul>
+          </div>
+        </nav>
+
+        <!-- Main content -->
+        <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content">
+          <div class="page-header">
+            <div
+              class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center"
+            >
+              <h1 class="page-title">
+                {% block page_title %}Dashboard{% endblock %}
+              </h1>
+              <div class="btn-toolbar mb-2 mb-md-0">
+                {% block page_actions %}{% endblock %}
+              </div>
+            </div>
+          </div>
+
+          {% if messages %} {% for message in messages %}
+          <div
+            class="alert alert-{{ message.tags }} alert-dismissible fade show"
+            role="alert"
+          >
+            {{ message }}
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="alert"
+            ></button>
+          </div>
+          {% endfor %} {% endif %} {% block content %}{% endblock %}
+        </main>
+      </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+
+    {% block extra_js %}{% endblock %}
+  </body>
+</html>

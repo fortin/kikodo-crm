@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+
+{% block title %}Contacts - Kikodo CRM{% endblock %}
+
+{% block page_title %}Contacts{% endblock %}
+
+{% block page_actions %}
+<button class="btn btn-primary">
+    <i class="fas fa-plus"></i> Add Contact
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body p-0">
+        {% if contacts %}
+            <div class="data-grid">
+                {% for contact in contacts %}
+                    <div class="data-grid-row">
+                        <div class="flex-grow-1">
+                            <div class="fw-semibold">{{ contact.full_name }}</div>
+                            <div class="text-muted small">
+                                {% if contact.company %}
+                                    {{ contact.company.name }}
+                                {% endif %}
+                                {% if contact.job_title %}
+                                    • {{ contact.job_title }}
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge bg-info">{{ contact.get_status_display }}</span>
+                            <div class="text-muted small">{{ contact.email }}</div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="p-4 text-center text-muted">
+                <i class="fas fa-users fa-2x mb-2"></i>
+                <p class="mb-0">No contacts found</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

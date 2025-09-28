@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block title %}Deals - Kikodo CRM{% endblock %}
+
+{% block page_title %}Deals{% endblock %}
+
+{% block page_actions %}
+<button class="btn btn-primary">
+    <i class="fas fa-plus"></i> Add Deal
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body p-0">
+        {% if deals %}
+            <div class="data-grid">
+                {% for deal in deals %}
+                    <div class="data-grid-row">
+                        <div class="flex-grow-1">
+                            <div class="fw-semibold">{{ deal.name }}</div>
+                            <div class="text-muted small">
+                                {{ deal.contact.full_name }}
+                                {% if deal.company %}
+                                    • {{ deal.company.name }}
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <div class="fw-semibold">${{ deal.amount|floatformat:0 }}</div>
+                            <span class="badge bg-info">{{ deal.get_stage_display }}</span>
+                            <div class="text-muted small">{{ deal.expected_close_date|date:"M d, Y" }}</div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="p-4 text-center text-muted">
+                <i class="fas fa-handshake fa-2x mb-2"></i>
+                <p class="mb-0">No deals found</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

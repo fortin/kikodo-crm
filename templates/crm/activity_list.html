@@ -1,0 +1,44 @@
+{% extends 'base.html' %} {% block title %}Activities - Kikodo CRM{% endblock %}
+{% block page_title %}Activities{% endblock %} {% block page_actions %}
+<button class="btn btn-primary">
+  <i class="fas fa-plus"></i> Add Activity
+</button>
+{% endblock %} {% block content %}
+<div class="card">
+  <div class="card-body p-0">
+    {% if activities %}
+    <div class="data-grid">
+      {% for activity in activities %}
+      <div class="data-grid-row">
+        <div class="me-3">
+          <span class="badge bg-primary"
+            >{{ activity.get_activity_type_display }}</span
+          >
+        </div>
+        <div class="flex-grow-1">
+          <div class="fw-semibold">{{ activity.subject }}</div>
+          <div class="text-muted small">
+            {% if activity.contact %} {{ activity.contact.full_name }} {% elif
+            activity.company %} {{ activity.company.name }} {% endif %}
+          </div>
+        </div>
+        <div class="text-end">
+          <span class="badge bg-info">{{ activity.get_status_display }}</span>
+          {% if activity.due_date %}
+          <div class="text-muted small">
+            {{ activity.due_date|date:"M d, Y" }}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="p-4 text-center text-muted">
+      <i class="fas fa-tasks fa-2x mb-2"></i>
+      <p class="mb-0">No activities found</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

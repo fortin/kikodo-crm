@@ -1,0 +1,328 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Kikodo CRM{% endblock %}
+
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <!-- Metrics Cards -->
+    <div class="col-md-3">
+        <div class="metric-card">
+            <div class="d-flex align-items-center">
+                <div class="flex-grow-1">
+                    <div class="metric-value">{{ total_contacts }}</div>
+                    <div class="metric-label">Total Contacts</div>
+                </div>
+                <div class="text-primary">
+                    <i class="fas fa-users fa-2x"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card">
+            <div class="d-flex align-items-center">
+                <div class="flex-grow-1">
+                    <div class="metric-value">{{ total_companies }}</div>
+                    <div class="metric-label">Companies</div>
+                </div>
+                <div class="text-info">
+                    <i class="fas fa-building fa-2x"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card">
+            <div class="d-flex align-items-center">
+                <div class="flex-grow-1">
+                    <div class="metric-value">{{ total_deals }}</div>
+                    <div class="metric-label">Active Deals</div>
+                </div>
+                <div class="text-success">
+                    <i class="fas fa-handshake fa-2x"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card">
+            <div class="d-flex align-items-center">
+                <div class="flex-grow-1">
+                    <div class="metric-value">{{ total_activities }}</div>
+                    <div class="metric-label">Activities</div>
+                </div>
+                <div class="text-warning">
+                    <i class="fas fa-tasks fa-2x"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <!-- Pipeline Chart -->
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-bar"></i> Sales Pipeline
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="pipelineChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Upcoming Activities -->
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-clock"></i> Upcoming Activities
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                {% if upcoming_activities %}
+                    <div class="data-grid">
+                        {% for activity in upcoming_activities %}
+                            <div class="data-grid-row">
+                                <div class="flex-grow-1">
+                                    <div class="fw-semibold">{{ activity.subject }}</div>
+                                    <div class="text-muted small">
+                                        {% if activity.contact %}
+                                            {{ activity.contact.full_name }}
+                                        {% elif activity.company %}
+                                            {{ activity.company.name }}
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="text-muted small">
+                                    {{ activity.due_date|date:"M d" }}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="p-4 text-center text-muted">
+                        <i class="fas fa-calendar-times fa-2x mb-2"></i>
+                        <p class="mb-0">No upcoming activities</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <!-- Recent Activities -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-history"></i> Recent Activities
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                {% if recent_activities %}
+                    <div class="data-grid">
+                        {% for activity in recent_activities %}
+                            <div class="data-grid-row">
+                                <div class="me-3">
+                                    <span class="badge bg-primary">{{ activity.get_activity_type_display }}</span>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <div class="fw-semibold">{{ activity.subject }}</div>
+                                    <div class="text-muted small">
+                                        {% if activity.contact %}
+                                            {{ activity.contact.full_name }}
+                                        {% elif activity.company %}
+                                            {{ activity.company.name }}
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="text-muted small">
+                                    {{ activity.created_at|date:"M d" }}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="p-4 text-center text-muted">
+                        <i class="fas fa-history fa-2x mb-2"></i>
+                        <p class="mb-0">No recent activities</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Deals -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-handshake"></i> Recent Deals
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                {% if recent_deals %}
+                    <div class="data-grid">
+                        {% for deal in recent_deals %}
+                            <div class="data-grid-row">
+                                <div class="flex-grow-1">
+                                    <div class="fw-semibold">{{ deal.name }}</div>
+                                    <div class="text-muted small">{{ deal.contact.full_name }}</div>
+                                </div>
+                                <div class="text-end">
+                                    <div class="fw-semibold">${{ deal.amount|floatformat:0 }}</div>
+                                    <span class="badge bg-info">{{ deal.get_stage_display }}</span>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="p-4 text-center text-muted">
+                        <i class="fas fa-handshake fa-2x mb-2"></i>
+                        <p class="mb-0">No recent deals</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <!-- Monthly Trends Chart -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-line"></i> Monthly Trends
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="trendsChart" width="400" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Pipeline Chart
+const pipelineCtx = document.getElementById('pipelineChart').getContext('2d');
+const pipelineData = {{ pipeline_data|safe }};
+
+const pipelineChart = new Chart(pipelineCtx, {
+    type: 'bar',
+    data: {
+        labels: pipelineData.map(item => item.stage.replace('_', ' ').toUpperCase()),
+        datasets: [{
+            label: 'Deal Count',
+            data: pipelineData.map(item => item.count),
+            backgroundColor: '#18B0FF',
+            borderColor: '#18B0FF',
+            borderWidth: 1
+        }, {
+            label: 'Total Value ($)',
+            data: pipelineData.map(item => item.total_amount || 0),
+            backgroundColor: '#7B68EE',
+            borderColor: '#7B68EE',
+            borderWidth: 1,
+            yAxisID: 'y1'
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: {
+                position: 'top',
+            }
+        },
+        scales: {
+            y: {
+                type: 'linear',
+                display: true,
+                position: 'left',
+                beginAtZero: true,
+                grid: {
+                    color: '#E5E5E5'
+                }
+            },
+            y1: {
+                type: 'linear',
+                display: true,
+                position: 'right',
+                beginAtZero: true,
+                grid: {
+                    drawOnChartArea: false,
+                },
+            },
+            x: {
+                grid: {
+                    color: '#E5E5E5'
+                }
+            }
+        }
+    }
+});
+
+// Trends Chart
+const trendsCtx = document.getElementById('trendsChart').getContext('2d');
+const trendsData = {{ monthly_stats|safe }};
+
+const trendsChart = new Chart(trendsCtx, {
+    type: 'line',
+    data: {
+        labels: trendsData.map(item => item.month),
+        datasets: [{
+            label: 'New Contacts',
+            data: trendsData.map(item => item.contacts),
+            borderColor: '#18B0FF',
+            backgroundColor: 'rgba(24, 176, 255, 0.1)',
+            tension: 0.4,
+            fill: true
+        }, {
+            label: 'New Deals',
+            data: trendsData.map(item => item.deals),
+            borderColor: '#7B68EE',
+            backgroundColor: 'rgba(123, 104, 238, 0.1)',
+            tension: 0.4,
+            fill: true
+        }, {
+            label: 'Revenue ($)',
+            data: trendsData.map(item => item.revenue),
+            borderColor: '#00D4AA',
+            backgroundColor: 'rgba(0, 212, 170, 0.1)',
+            tension: 0.4,
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: {
+                position: 'top',
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                grid: {
+                    color: '#E5E5E5'
+                }
+            },
+            x: {
+                grid: {
+                    color: '#E5E5E5'
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

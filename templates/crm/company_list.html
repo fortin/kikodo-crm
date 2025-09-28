@@ -1,0 +1,41 @@
+{% extends 'base.html' %} {% block title %}Companies - Kikodo CRM{% endblock %}
+{% block page_title %}Companies{% endblock %} {% block page_actions %}
+<button class="btn btn-primary"><i class="fas fa-plus"></i> Add Company</button>
+{% endblock %} {% block content %}
+<div class="card">
+  <div class="card-body p-0">
+    {% if companies %}
+    <div class="data-grid">
+      {% for company in companies %}
+      <div class="data-grid-row">
+        <div class="flex-grow-1">
+          <div class="fw-semibold">{{ company.name }}</div>
+          <div class="text-muted small">
+            {% if company.industry %} {{ company.industry }} {% endif %} {% if
+            company.city %} • {{ company.city }}, {{ company.state }} {% endif
+            %}
+          </div>
+        </div>
+        <div class="text-end">
+          {% if company.annual_revenue %}
+          <div class="fw-semibold">
+            ${{ company.annual_revenue|floatformat:0 }}
+          </div>
+          {% endif %} {% if company.employee_count %}
+          <div class="text-muted small">
+            {{ company.employee_count }} employees
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="p-4 text-center text-muted">
+      <i class="fas fa-building fa-2x mb-2"></i>
+      <p class="mb-0">No companies found</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
