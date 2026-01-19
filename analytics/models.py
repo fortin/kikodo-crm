@@ -302,3 +302,296 @@ class CustomFieldValue(models.Model):
         elif self.custom_field.field_type == "email":
             return self.text_value
         return None
+
+
+class Base(TimeStampedModel):
+    """Airtable-style Base (workspace) for organizing tables"""
+
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    icon = models.CharField(max_length=50, default="📊")  # Emoji or icon name
+    color = models.CharField(max_length=20, default="blue")
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    is_active = models.BooleanField(default=True)
+    is_public = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "Base"
+        verbose_name_plural = "Bases"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def tables_count(self):
+        return self.tables.count()
+
+
+class Table(TimeStampedModel):
+    """Airtable-style Table within a Base"""
+
+    base = models.ForeignKey(Base, on_delete=models.CASCADE, related_name="tables")
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    icon = models.CharField(max_length=50, default="📋")  # Emoji or icon name
+    color = models.CharField(max_length=20, default="gray")
+    is_active = models.BooleanField(default=True)
+
+    # Table configuration
+    default_view = models.CharField(
+        max_length=20,
+        choices=[
+            ("grid", "Grid View"),
+            ("calendar", "Calendar View"),
+            ("kanban", "Kanban View"),
+            ("gallery", "Gallery View"),
+        ],
+        default="grid",
+    )
+
+    class Meta:
+        verbose_name = "Table"
+        verbose_name_plural = "Tables"
+        ordering = ["base", "name"]
+        unique_together = ["base", "name"]
+
+    def __str__(self):
+        return f"{self.base.name} - {self.name}"
+
+    @property
+    def records_count(self):
+        return self.records.count()
+
+
+# Keep DashboardTemplate for backward compatibility (to be removed later)
+class DashboardTemplate(TimeStampedModel):
+    """Dashboard template for CSV import and custom metrics (DEPRECATED - use Base/Table instead)"""
+
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    csv_template = models.FileField(
+        upload_to="dashboard_templates/", blank=True, null=True
+    )
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    is_active = models.BooleanField(default=True)
+    is_public = models.BooleanField(default=False)
+
+    # Template configuration
+    period_type = models.CharField(
+        max_length=20,
+        choices=[
+            ("weekly", "Weekly"),
+            ("monthly", "Monthly"),
+            ("quarterly", "Quarterly"),
+            ("yearly", "Yearly"),
+            ("custom", "Custom"),
+        ],
+        default="weekly",
+    )
+
+    class Meta:
+        verbose_name = "Dashboard Template"
+        verbose_name_plural = "Dashboard Templates"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.name
+
+
+class CustomMetric(TimeStampedModel):
+    """Custom metric for tracking KPIs and targets"""
+
+    template = models.ForeignKey(
+        "DashboardTemplate", on_delete=models.CASCADE, related_name="metrics"
+    )
+    metric_name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+
+    # Target and actual values
+    target_value = models.DecimalField(
+        max_digits=15, decimal_places=2, blank=True, null=True
+    )
+    actual_value = models.DecimalField(
+        max_digits=15, decimal_places=2, blank=True, null=True
+    )
+
+    # Period information
+    period = models.CharField(max_length=50)  # "Week 1", "Week 2", "Month 1", etc.
+    period_start_date = models.DateField(blank=True, null=True)
+    period_end_date = models.DateField(blank=True, null=True)
+
+    # Metric configuration
+    metric_type = models.CharField(
+        max_length=20,
+        choices=[
+            ("count", "Count"),
+            ("sum", "Sum"),
+            ("average", "Average"),
+            ("percentage", "Percentage"),
+            ("currency", "Currency"),
+        ],
+        default="count",
+    )
+
+    unit = models.CharField(
+        max_length=20, blank=True
+    )  # "posts", "connections", "meetings", etc.
+
+    class Meta:
+        verbose_name = "Custom Metric"
+        verbose_name_plural = "Custom Metrics"
+        ordering = ["template", "period", "metric_name"]
+        unique_together = ["template", "metric_name", "period"]
+
+    def __str__(self):
+        return f"{self.template.name} - {self.metric_name} ({self.period})"
+
+    @property
+    def percentage_achieved(self):
+        """Calculate percentage achieved"""
+        if self.target_value and self.target_value > 0:
+            return round((self.actual_value or 0) / self.target_value * 100, 2)
+        return 0
+
+    @property
+    def is_on_track(self):
+        """Check if metric is on track (>= 80% of target)"""
+        return self.percentage_achieved >= 80
+
+
+class MetricDataPoint(TimeStampedModel):
+    """Individual data points for metrics"""
+
+    metric = models.ForeignKey(
+        "CustomMetric", on_delete=models.CASCADE, related_name="data_points"
+    )
+    value = models.DecimalField(max_digits=15, decimal_places=2)
+    date_recorded = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = "Metric Data Point"
+        verbose_name_plural = "Metric Data Points"
+        ordering = ["-date_recorded"]
+
+    def __str__(self):
+        return f"{self.metric.metric_name}: {self.value} ({self.date_recorded.date()})"
+
+
+class DashboardView(TimeStampedModel):
+    """Saved dashboard view configuration"""
+
+    template = models.ForeignKey(
+        "DashboardTemplate", on_delete=models.CASCADE, related_name="views"
+    )
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    # View configuration (JSON)
+    configuration = models.JSONField(default=dict)
+
+    # Display settings
+    chart_type = models.CharField(
+        max_length=20,
+        choices=[
+            ("line", "Line Chart"),
+            ("bar", "Bar Chart"),
+            ("pie", "Pie Chart"),
+            ("area", "Area Chart"),
+            ("scatter", "Scatter Plot"),
+            ("table", "Table"),
+        ],
+        default="line",
+    )
+
+    is_default = models.BooleanField(default=False)
+    is_public = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "Dashboard View"
+        verbose_name_plural = "Dashboard Views"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.template.name} - {self.name}"
+
+
+# New Airtable-style models
+class TableField(TimeStampedModel):
+    """Field definitions for a table (like Airtable fields)"""
+
+    table = models.ForeignKey("Table", on_delete=models.CASCADE, related_name="fields")
+    name = models.CharField(max_length=100)
+    field_type = models.CharField(
+        max_length=20,
+        choices=[
+            ("single_line_text", "Single Line Text"),
+            ("long_text", "Long Text"),
+            ("number", "Number"),
+            ("phone_number", "Phone Number"),
+            ("email", "Email"),
+            ("url", "URL"),
+            ("date", "Date"),
+            ("checkbox", "Checkbox"),
+            ("select", "Select"),
+            ("multi_select", "Multi Select"),
+            ("rating", "Rating"),
+            ("currency", "Currency"),
+            ("percentage", "Percentage"),
+            ("duration", "Duration"),
+        ],
+        default="single_line_text",
+    )
+    description = models.TextField(blank=True)
+    is_required = models.BooleanField(default=False)
+    is_primary = models.BooleanField(default=False)  # Primary field for the table
+    order = models.PositiveIntegerField(default=0)
+
+    # Field options (JSON for flexible configuration)
+    options = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "Table Field"
+        verbose_name_plural = "Table Fields"
+        ordering = ["table", "order", "name"]
+        unique_together = ["table", "name"]
+
+    def __str__(self):
+        return f"{self.table.name} - {self.name}"
+
+
+class Record(TimeStampedModel):
+    """Individual records in a table (like Airtable records)"""
+
+    table = models.ForeignKey("Table", on_delete=models.CASCADE, related_name="records")
+
+    # Dynamic fields will be stored as JSON
+    data = models.JSONField(default=dict)
+
+    class Meta:
+        verbose_name = "Record"
+        verbose_name_plural = "Records"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        # Try to get a primary field or first field for display
+        primary_field = self.table.fields.filter(is_primary=True).first()
+        if primary_field and primary_field.name in self.data:
+            return str(self.data[primary_field.name])
+        elif self.data:
+            # Use first field if no primary field
+            first_key = next(iter(self.data.keys()), None)
+            if first_key:
+                return str(self.data[first_key])
+        return f"Record {self.id}"
+
+    def get_field_value(self, field_name):
+        """Get value for a specific field"""
+        return self.data.get(field_name, "")
+
+    def set_field_value(self, field_name, value):
+        """Set value for a specific field"""
+        self.data[field_name] = value
+        self.save()
