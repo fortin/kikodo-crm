@@ -1,0 +1,630 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% csrf_token %}
+
+{% block title %}Dashboard Templates - Kikodo CRM{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1 class="page-title">Dashboard Templates</h1>
+            <p class="page-subtitle">Create and manage custom dashboard templates with CSV import</p>
+        </div>
+        <div>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createTemplateModal">
+                <i class="fas fa-plus"></i> Create Template
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">My Templates</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Period Type</th>
+                                <th>Metrics</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="templatesTable">
+                            <!-- Templates will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Template Modal -->
+<div class="modal fade" id="createTemplateModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create Dashboard Template</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="createTemplateForm">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="templateName" class="form-label">Template Name</label>
+                                <input type="text" class="form-control" id="templateName" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="periodType" class="form-label">Period Type</label>
+                                <select class="form-select" id="periodType" required>
+                                    <option value="weekly">Weekly</option>
+                                    <option value="monthly">Monthly</option>
+                                    <option value="quarterly">Quarterly</option>
+                                    <option value="yearly">Yearly</option>
+                                    <option value="custom">Custom</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="templateDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="templateDescription" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="isPublic">
+                            <label class="form-check-label" for="isPublic">
+                                Make template public
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Template</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Import CSV Modal -->
+<div class="modal fade" id="importCsvModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Import CSV Data</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="importCsvForm" enctype="multipart/form-data">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="csvFile" class="form-label">CSV File</label>
+                        <input type="file" class="form-control" id="csvFile" accept=".csv" required>
+                        <div class="form-text">
+                            Upload a CSV file with your metrics data. The first column should contain period information (e.g., "Week 1", "Month 1").
+                            Columns should be named with "(Target)" and "(Actual)" suffixes for automatic detection.
+                        </div>
+                    </div>
+                    <div class="alert alert-info">
+                        <h6>CSV Format Example:</h6>
+                        <pre>Period,Posts published (Target),Posts published (Actual),Connections (Target),Connections (Actual)
+Week 1,3,2,30,25
+Week 2,6,5,50,45</pre>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Import CSV</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Template Dashboard Modal -->
+<div class="modal fade" id="templateDashboardModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Template Dashboard</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="templateDashboardContent">
+                    <!-- Dashboard content will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadTemplates();
+
+    // Create template form
+    document.getElementById('createTemplateForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        createTemplate();
+    });
+
+    // Import CSV form
+    document.getElementById('importCsvForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        importCsv();
+    });
+});
+
+function loadTemplates() {
+    fetch('/analytics/api/dashboard-templates/', {
+        headers: {
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        }
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            const tbody = document.getElementById('templatesTable');
+            tbody.innerHTML = '';
+
+            data.results.forEach(template => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>
+                        <strong>${template.name}</strong>
+                        ${template.description ? `<br><small class="text-muted">${template.description}</small>` : ''}
+                    </td>
+                    <td><span class="badge bg-secondary">${template.period_type}</span></td>
+                    <td>${template.metrics_count} metrics</td>
+                    <td>
+                        <span class="badge ${template.is_active ? 'bg-success' : 'bg-secondary'}">
+                            ${template.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                    </td>
+                    <td>${new Date(template.created_at).toLocaleDateString()}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-primary" onclick="viewTemplate(${template.id})">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button class="btn btn-outline-success" onclick="importCsvTemplate(${template.id})">
+                                <i class="fas fa-upload"></i>
+                            </button>
+                            <button class="btn btn-outline-danger" onclick="deleteTemplate(${template.id})">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        })
+        .catch(error => {
+            console.error('Error loading templates:', error);
+            showAlert('Error loading templates', 'danger');
+        });
+}
+
+function createTemplate() {
+    const formData = {
+        name: document.getElementById('templateName').value,
+        description: document.getElementById('templateDescription').value,
+        period_type: document.getElementById('periodType').value,
+        is_public: document.getElementById('isPublic').checked
+    };
+
+    fetch('/analytics/api/dashboard-templates/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.id) {
+            showAlert('Template created successfully!', 'success');
+            document.getElementById('createTemplateModal').querySelector('.btn-close').click();
+            document.getElementById('createTemplateForm').reset();
+            loadTemplates();
+        } else {
+            showAlert('Error creating template: ' + (data.error || 'Unknown error'), 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error creating template:', error);
+        showAlert('Error creating template', 'danger');
+    });
+}
+
+function viewTemplate(templateId) {
+    fetch(`/analytics/api/dashboard-templates/${templateId}/`)
+        .then(response => response.json())
+        .then(template => {
+            // Load template metrics
+            return fetch(`/analytics/api/custom-metrics/?template=${templateId}`)
+                .then(response => response.json())
+                .then(metrics => {
+                    showTemplateDashboard(template, metrics.results);
+                });
+        })
+        .catch(error => {
+            console.error('Error loading template:', error);
+            showAlert('Error loading template', 'danger');
+        });
+}
+
+function showTemplateDashboard(template, metrics) {
+    const modal = new bootstrap.Modal(document.getElementById('templateDashboardModal'));
+    const content = document.getElementById('templateDashboardContent');
+
+    let html = `
+        <div class="row mb-4">
+            <div class="col-12">
+                <h4>${template.name}</h4>
+                <p class="text-muted">${template.description || ''}</p>
+            </div>
+        </div>
+    `;
+
+          if (metrics.length === 0) {
+              html += `
+                  <div class="row">
+                      <div class="col-12">
+                          <div class="alert alert-info">
+                              <h5>No metrics found</h5>
+                              <p>This template doesn't have any metrics yet. Upload a CSV file to populate the dashboard.</p>
+                              <p><strong>CSV Format:</strong></p>
+                              <pre>Period,Posts published (Target),Posts published (Actual),Connections (Target),Connections (Actual)
+Week 1,3,2,30,25
+Week 2,6,5,50,45</pre>
+                          </div>
+                      </div>
+                  </div>
+              `;
+          } else {
+              // Add table view toggle
+              html += `
+                  <div class="row mb-3">
+                      <div class="col-12">
+                          <div class="btn-group" role="group">
+                              <button type="button" class="btn btn-outline-primary active" id="cardViewBtn" onclick="toggleView('card')">
+                                  <i class="fas fa-th-large"></i> Card View
+                              </button>
+                              <button type="button" class="btn btn-outline-primary" id="tableViewBtn" onclick="toggleView('table')">
+                                  <i class="fas fa-table"></i> Table View
+                              </button>
+                          </div>
+                      </div>
+                  </div>
+              `;
+
+              // Card view
+              html += `<div id="cardView">`;
+        // Group metrics by period
+        const metricsByPeriod = {};
+        metrics.forEach(metric => {
+            if (!metricsByPeriod[metric.period]) {
+                metricsByPeriod[metric.period] = [];
+            }
+            metricsByPeriod[metric.period].push(metric);
+        });
+
+        // Create metrics cards
+        Object.keys(metricsByPeriod).sort().forEach(period => {
+            const periodMetrics = metricsByPeriod[period];
+            html += `
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h5>${period}</h5>
+                        <div class="row">
+            `;
+
+            periodMetrics.forEach(metric => {
+                const percentage = metric.percentage_achieved || 0;
+                const statusClass = metric.is_on_track ? 'success' : 'warning';
+
+                html += `
+                    <div class="col-md-3 mb-3">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title">${metric.metric_name}</h6>
+                                <div class="row">
+                                    <div class="col-6">
+                                        <label class="form-label small">Target</label>
+                                        <input type="number" class="form-control form-control-sm"
+                                               value="${metric.target_value || ''}"
+                                               data-metric-id="${metric.id}"
+                                               data-field="target_value"
+                                               onchange="updateMetric(${metric.id}, 'target_value', this.value)">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small">Actual</label>
+                                        <input type="number" class="form-control form-control-sm"
+                                               value="${metric.actual_value || ''}"
+                                               data-metric-id="${metric.id}"
+                                               data-field="actual_value"
+                                               onchange="updateMetric(${metric.id}, 'actual_value', this.value)">
+                                    </div>
+                                </div>
+                                <div class="progress mt-2">
+                                    <div class="progress-bar bg-${statusClass}" style="width: ${percentage}%"></div>
+                                </div>
+                                <small class="text-muted">${percentage}% achieved</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `</div>`; // Close card view
+
+        // Table view
+        html += `
+            <div id="tableView" style="display: none;">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Period</th>
+                                <th>Metric</th>
+                                <th>Target</th>
+                                <th>Actual</th>
+                                <th>% Achieved</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+
+        // Add table rows
+        Object.keys(metricsByPeriod).sort().forEach(period => {
+            const periodMetrics = metricsByPeriod[period];
+            periodMetrics.forEach(metric => {
+                const percentage = metric.percentage_achieved || 0;
+                const statusClass = metric.is_on_track ? 'success' : 'warning';
+                const statusText = metric.is_on_track ? 'On Track' : 'Behind';
+
+                html += `
+                    <tr>
+                        <td><strong>${period}</strong></td>
+                        <td>${metric.metric_name}</td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm"
+                                   value="${metric.target_value || ''}"
+                                   data-metric-id="${metric.id}"
+                                   data-field="target_value"
+                                   onchange="updateMetric(${metric.id}, 'target_value', this.value)">
+                        </td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm"
+                                   value="${metric.actual_value || ''}"
+                                   data-metric-id="${metric.id}"
+                                   data-field="actual_value"
+                                   onchange="updateMetric(${metric.id}, 'actual_value', this.value)">
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar bg-${statusClass}" style="width: ${percentage}%">
+                                    ${percentage}%
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge bg-${statusClass}">${statusText}</span>
+                        </td>
+                    </tr>
+                `;
+            });
+        });
+
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    content.innerHTML = html;
+    modal.show();
+}
+
+function toggleView(viewType) {
+    const cardView = document.getElementById('cardView');
+    const tableView = document.getElementById('tableView');
+    const cardBtn = document.getElementById('cardViewBtn');
+    const tableBtn = document.getElementById('tableViewBtn');
+
+    if (viewType === 'card') {
+        cardView.style.display = 'block';
+        tableView.style.display = 'none';
+        cardBtn.classList.add('active');
+        tableBtn.classList.remove('active');
+    } else {
+        cardView.style.display = 'none';
+        tableView.style.display = 'block';
+        cardBtn.classList.remove('active');
+        tableBtn.classList.add('active');
+    }
+}
+
+function updateMetric(metricId, field, value) {
+    const data = {};
+    data[field] = value || null;
+
+    fetch(`/analytics/api/custom-metrics/${metricId}/`, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(updatedMetric => {
+        const percentage = updatedMetric.percentage_achieved || 0;
+        const statusClass = updatedMetric.is_on_track ? 'success' : 'warning';
+        const statusText = updatedMetric.is_on_track ? 'On Track' : 'Behind';
+
+        // Update card view elements
+        const cardInput = document.querySelector(`input[data-metric-id="${metricId}"][data-field="${field}"]`);
+        if (cardInput) {
+            const card = cardInput.closest('.card');
+            const progressBar = card.querySelector('.progress-bar');
+            const percentageText = card.querySelector('.text-muted');
+
+            progressBar.style.width = `${percentage}%`;
+            progressBar.className = `progress-bar bg-${statusClass}`;
+            percentageText.textContent = `${percentage}% achieved`;
+        }
+
+        // Update table view elements
+        const tableInput = document.querySelector(`input[data-metric-id="${metricId}"][data-field="${field}"]`);
+        if (tableInput) {
+            const row = tableInput.closest('tr');
+            const progressBar = row.querySelector('.progress-bar');
+            const statusBadge = row.querySelector('.badge');
+
+            progressBar.style.width = `${percentage}%`;
+            progressBar.className = `progress-bar bg-${statusClass}`;
+            progressBar.textContent = `${percentage}%`;
+            statusBadge.className = `badge bg-${statusClass}`;
+            statusBadge.textContent = statusText;
+        }
+
+        showAlert('Metric updated successfully!', 'success');
+    })
+    .catch(error => {
+        console.error('Error updating metric:', error);
+        showAlert('Error updating metric', 'danger');
+    });
+}
+
+function importCsvTemplate(templateId) {
+    document.getElementById('importCsvForm').dataset.templateId = templateId;
+    const modal = new bootstrap.Modal(document.getElementById('importCsvModal'));
+    modal.show();
+}
+
+function importCsv() {
+    const templateId = document.getElementById('importCsvForm').dataset.templateId;
+    const fileInput = document.getElementById('csvFile');
+    const file = fileInput.files[0];
+
+    if (!file) {
+        showAlert('Please select a CSV file', 'warning');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('csv_file', file);
+
+    fetch(`/analytics/api/dashboard-templates/${templateId}/import_csv/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.message) {
+            showAlert(data.message, 'success');
+            document.getElementById('importCsvModal').querySelector('.btn-close').click();
+            document.getElementById('importCsvForm').reset();
+            loadTemplates();
+        } else {
+            showAlert('Error importing CSV: ' + (data.error || 'Unknown error'), 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error importing CSV:', error);
+        showAlert('Error importing CSV', 'danger');
+    });
+}
+
+function deleteTemplate(templateId) {
+    if (confirm('Are you sure you want to delete this template? This action cannot be undone.')) {
+        fetch(`/analytics/api/dashboard-templates/${templateId}/`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                showAlert('Template deleted successfully', 'success');
+                loadTemplates();
+            } else {
+                showAlert('Error deleting template', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error deleting template:', error);
+            showAlert('Error deleting template', 'danger');
+        });
+    }
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+
+    const container = document.querySelector('.page-header');
+    container.insertAdjacentElement('afterend', alertDiv);
+
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

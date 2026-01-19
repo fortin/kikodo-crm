@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% csrf_token %}
+
+{% block title %}Bases - Kikodo CRM{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1 class="page-title">Bases</h1>
+            <p class="page-subtitle">Organize your data into Bases and Tables like Airtable</p>
+        </div>
+        <div>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createBaseModal">
+                <i class="fas fa-plus"></i> Create Base
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Bases Grid -->
+<div class="row" id="basesGrid">
+    <!-- Bases will be loaded here -->
+</div>
+
+<!-- Create Base Modal -->
+<div class="modal fade" id="createBaseModal" tabindex="-1" aria-labelledby="createBaseModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createBaseModalLabel">Create New Base</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createBaseForm">
+                    <div class="mb-3">
+                        <label for="baseName" class="form-label">Base Name</label>
+                        <input type="text" class="form-control" id="baseName" required placeholder="e.g., Marketing Metrics">
+                    </div>
+                    <div class="mb-3">
+                        <label for="baseDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="baseDescription" rows="3" placeholder="Describe what this base is for..."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="baseIcon" class="form-label">Icon</label>
+                        <select class="form-select" id="baseIcon">
+                            <option value="📊">📊 Analytics</option>
+                            <option value="📈">📈 Marketing</option>
+                            <option value="💼">💼 Sales</option>
+                            <option value="📋">📋 Operations</option>
+                            <option value="🎯">🎯 Goals</option>
+                            <option value="📅">📅 Calendar</option>
+                            <option value="💰">💰 Finance</option>
+                            <option value="👥">👥 HR</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="baseColor" class="form-label">Color</label>
+                        <select class="form-select" id="baseColor">
+                            <option value="blue">Blue</option>
+                            <option value="green">Green</option>
+                            <option value="purple">Purple</option>
+                            <option value="orange">Orange</option>
+                            <option value="red">Red</option>
+                            <option value="yellow">Yellow</option>
+                            <option value="gray">Gray</option>
+                        </select>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="basePublic">
+                        <label class="form-check-label" for="basePublic">Public (shareable with others)</label>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Create Base</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Base Detail Modal -->
+<div class="modal fade" id="baseDetailModal" tabindex="-1" aria-labelledby="baseDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="baseDetailModalLabel">
+                    <span id="baseTitle"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="baseDetailContent">
+                    <!-- Base content will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Drag & Drop CSV Modal -->
+<div class="modal fade" id="dragDropModal" tabindex="-1" aria-labelledby="dragDropModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="dragDropModalLabel">Import CSV Dataset</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="drop-zone" id="dropZone">
+                    <div class="text-center">
+                        <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                        <h5>Drop your CSV file here</h5>
+                        <p class="text-muted">or click to browse</p>
+                        <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
+                    </div>
+                </div>
+                <div id="csvPreview" style="display: none;">
+                    <h6>CSV Preview:</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm" id="previewTable">
+                            <!-- Preview will be shown here -->
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="importCsvBtn" style="display: none;">Import into Table</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+    <div id="liveAlertPlaceholder"></div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadBases();
+
+    // Create Base form submission
+    document.getElementById('createBaseForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        createBase();
+    });
+
+    // Drag & drop functionality
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('csvFileInput');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drag-over');
+    });
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('drag-over');
+    });
+    dropZone.addEventListener('drop', handleFileDrop);
+
+    fileInput.addEventListener('change', handleFileSelect);
+});
+
+function getCsrfToken() {
+    return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+}
+
+function showAlert(message, type) {
+    const alertPlaceholder = document.getElementById('liveAlertPlaceholder');
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = [
+        `<div class="alert alert-${type} alert-dismissible" role="alert">`,
+        `   <div>${message}</div>`,
+        '   <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>',
+        '</div>'
+    ].join('');
+    alertPlaceholder.append(wrapper);
+}
+
+function loadBases() {
+    fetch('/analytics/api/bases/', {
+        headers: {
+            'X-CSRFToken': getCsrfToken()
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        const grid = document.getElementById('basesGrid');
+        grid.innerHTML = '';
+
+        if (data.results.length === 0) {
+            grid.innerHTML = `
+                <div class="col-12">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                            <h5>No Bases Yet</h5>
+                            <p class="text-muted">Create your first base to start organizing your data</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createBaseModal">
+                                <i class="fas fa-plus"></i> Create Your First Base
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        data.results.forEach(base => {
+            const card = document.createElement('div');
+            card.className = 'col-lg-4 col-md-6 mb-4';
+            card.innerHTML = `
+                <div class="card h-100 base-card" data-base-id="${base.id}">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span class="fs-4">${base.icon}</span>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-ellipsis-h"></i>
+                            </button>
+                            <ul class="dropdown-media">
+                                <li><a class="dropdown-item" href="#" onclick="openBase('${base.id}')"><i class="fas fa-eye"></i> Open</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="editBase('${base.id}')"><i class="fas fa-edit"></i> Edit</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="deleteBase('${base.id}')"><i class="fas fa-trash text-danger"></i> Delete</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <h5 class="card-title">${base.name}</h5>
+                        <p class="card-text text-muted">${base.description || 'No description'}</p>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small class="text-muted">${base.tables_count} tables</small>
+                            <small class="text-muted">${new Date(base.created_at).toLocaleDateString()}</small>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <div class="d-flex justify-content-between">
+                            <button class="btn btn-outline-primary btn-sm" onclick="openBase('${base.id}')">
+                                <i class="fas fa-eye"></i> Open
+                            </button>
+                            <button class="btn btn-outline-success btn-sm" onclick="importToBase('${base.id}', '${base.name}')">
+                                <i class="fas fa-upload"></i> Import CSV
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+    })
+    .catch(error => {
+        console.error('Error loading bases:', error);
+        showAlert('Error loading bases', 'danger');
+    });
+}
+
+function createBase() {
+    const name = document.getElementById('baseName').value;
+    const description = document.getElementById('baseDescription').value;
+    const icon = document.getElementById('baseIcon').value;
+    const color = document.getElementById('baseColor').value;
+    const isPublic = document.getElementById('basePublic').checked;
+
+    fetch('/analytics/api/bases/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({
+            name: name,
+            description: description,
+            icon: icon,
+            color: color,
+            is_public: isPublic
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        showAlert('Base created successfully!', 'success');
+        const modal = bootstrap.Modal.getInstance(document.getElementById('createBaseModal'));
+        modal.hide();
+        document.getElementById('createBaseForm').reset();
+        loadBases();
+    })
+    .catch(error => {
+        console.error('Error creating base:', error);
+        showAlert('Error creating base', 'danger');
+    });
+}
+
+function openBase(baseId) {
+    // For now, just show a success message
+    // Later this will open the table management interface
+    showAlert('Opening base... (Coming soon!)', 'info');
+}
+
+function importToBase(baseId, baseName) {
+    document.getElementById('dragDropModalLabel').textContent = `Import CSV to ${baseName}`;
+    document.querySelector('#dragDropModal [data-base-id]')?.removeAttribute('data-base-id');
+    document.getElementById('dropZone').setAttribute('data-base-id', baseId);
+
+    const modal = new bootstrap.Modal(document.getElementById('dragDropModal'));
+    modal.show();
+}
+
+function handleFileDrop(e) {
+    e.preventDefault();
+    document.getElementById('dropZone').classList.remove('drag-over');
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+        handleCSVFile(files[0]);
+    }
+}
+
+function handleFileSelect(e) {
+    if (e.target.files.length > 0) {
+        handleCSVFile(e.target.files[0]);
+    }
+}
+
+function handleCSVFile(file) {
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+        showAlert('Please select a CSV file', 'warning');
+        return;
+    }
+
+    // Parse CSV and show preview
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const csvText = e.target.result;
+        const lines = csvText.split('\n');
+        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+
+        // Show preview
+        const previewTable = document.getElementById('previewTable');
+        previewTable.innerHTML = '';
+
+        // Add headers
+        const headerRow = document.createElement('tr');
+        headers.forEach(header => {
+            const th = document.createElement('th');
+            th.textContent = header;
+            headerRow.appendChild(th);
+        });
+        previewTable.appendChild(headerRow);
+
+        // Add first 5 rows as preview
+        for (let i = 1; i <= Math.min(5, lines.length - 1); i++) {
+            if (lines[i].trim()) {
+                const row = document.createElement('tr');
+                const values = lines[i].split(',');
+                values.forEach(value => {
+                    const td = document.createElement('td');
+                    td.textContent = value.trim().replace(/"/g, '');
+                    row.appendChild(td);
+                });
+                previewTable.appendChild(row);
+            }
+        }
+
+        document.getElementById('csvPreview').style.display = 'block';
+        document.getElementById('importCsvBtn').style.display = 'block';
+
+        // Store CSV data for import
+        document.getElementById('dropZone').setAttribute('data-csv-data', btoa(csvText));
+    };
+    reader.readAsText(file);
+}
+
+// Add CSS for drag & drop
+const style = document.createElement('style');
+style.textContent = `
+.drop-zone {
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    padding: 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.drop-zone:hover, .drop-zone.drag-over {
+    border-color: #0d6efd;
+    background-color: #f8f9ff;
+}
+
+.base-card {
+    transition: transform 0.2s ease;
+}
+
+.base-card:hover {
+    transform: translateY(-2px);
+}
+`;
+document.head.appendChild(style);
+</script>
+{% endblock %}
