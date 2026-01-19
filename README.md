@@ -77,9 +77,24 @@ A comprehensive Customer Relationship Management (CRM) system built with Django,
    ```
 
 3. **Install dependencies**
+   
+   For Python 3.12+ (including Python 3.13), you must install base requirements first:
+   ```bash
+   pip install -r requirements-base.txt
+   pip install -r requirements.txt
+   ```
+   
+   Or use the installation script:
+   ```bash
+   ./install_requirements.sh
+   ```
+   
+   For Python 3.11 and earlier:
    ```bash
    pip install -r requirements.txt
    ```
+   
+   **Note**: Python 3.13 removed `distutils`, so `setuptools` must be installed before other packages that may build from source.
 
 4. **Run migrations**
    ```bash

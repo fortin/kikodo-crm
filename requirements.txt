@@ -1,4 +1,5 @@
-setuptools>=65.5.0
+# Note: Install requirements-base.txt first for Python 3.13 compatibility
+# Run: pip install -r requirements-base.txt && pip install -r requirements.txt
 celery==5.3.4
 crispy-bootstrap5==0.7
 django-bootstrap5==23.3
