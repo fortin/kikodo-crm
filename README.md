@@ -13,6 +13,8 @@ A comprehensive Customer Relationship Management (CRM) system built with Django,
 
 ### Analytics & Reporting
 - **Dashboard**: Real-time metrics and visualizations with Airtable-inspired design
+- **Dashboard Templates**: Create custom dashboard templates with CSV import functionality
+- **Custom Metrics**: Track custom KPIs with target vs actual values and progress monitoring
 - **Pipeline Analytics**: Sales funnel analysis with stage-by-stage breakdown
 - **Activity Analytics**: Performance tracking and engagement metrics
 - **Custom Reports**: Flexible reporting system with filtering and export capabilities

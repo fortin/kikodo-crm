@@ -47,9 +47,10 @@ Use the sidebar to access different sections:
 - Set due dates and priorities
 
 #### 📈 Analytics
-- Advanced reporting (coming soon)
-- Performance metrics
-- Custom dashboards
+- Advanced reporting and metrics
+- Custom dashboard templates
+- CSV import functionality
+- Progress tracking and visualization
 
 #### 📄 Reports
 - Custom report builder (coming soon)
@@ -127,7 +128,38 @@ The system comes with sample data to help you get started:
 4. Set due date and priority
 5. Link to relevant contact/company/deal
 
-### 9. Understanding the Interface
+### 9. Dashboard Templates (New!)
+
+#### Creating Your First Template
+1. Go to Analytics → Templates
+2. Click "Create Template" button
+3. Enter template name (e.g., "Marketing Metrics")
+4. Select period type (Weekly/Monthly/Quarterly/Yearly)
+5. Add description and choose visibility
+6. Click "Create Template"
+
+#### Importing CSV Data
+1. Find your template in the list
+2. Click the upload icon (📤) next to it
+3. Upload your CSV file with this format:
+   ```
+   Period,Posts published (Target),Posts published (Actual),Connections (Target),Connections (Actual)
+   Week 1,3,2,30,25
+   Week 2,6,5,50,45
+   ```
+4. The system automatically:
+   - Parses metric names from headers
+   - Extracts target and actual values
+   - Calculates percentage achieved
+   - Creates visual progress indicators
+
+#### Viewing Your Dashboard
+1. Click the eye icon (👁️) next to your template
+2. See interactive progress bars for each metric
+3. Monitor performance across all periods
+4. Track which metrics are on track (≥80%) vs behind
+
+### 10. Understanding the Interface
 
 #### Airtable-Inspired Design
 - **Clean Layout**: Minimal, professional appearance
@@ -141,7 +173,7 @@ The system comes with sample data to help you get started:
 - **Action Buttons**: Primary actions for each section
 - **Status Indicators**: Visual status representation
 
-### 10. Getting Help
+### 11. Getting Help
 
 #### Built-in Help
 - Tooltips and hover information

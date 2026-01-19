@@ -604,6 +604,311 @@ curl -X PATCH "http://localhost:8000/crm/api/deals/1/" \
      }'
 ```
 
+## Analytics API
+
+The analytics API provides endpoints for dashboard templates, custom metrics, and reporting functionality.
+
+### Base URL
+```
+http://localhost:8000/analytics/api/
+```
+
+### Dashboard Templates
+
+#### List Templates
+```
+GET /analytics/api/dashboard-templates/
+```
+
+**Response:**
+```json
+{
+    "count": 5,
+    "results": [
+        {
+            "id": 1,
+            "name": "Marketing Metrics",
+            "description": "Track marketing KPIs",
+            "period_type": "weekly",
+            "is_active": true,
+            "is_public": false,
+            "metrics_count": 24,
+            "created_by": "admin",
+            "created_at": "2025-09-28T10:00:00Z"
+        }
+    ]
+}
+```
+
+#### Create Template
+```
+POST /analytics/api/dashboard-templates/
+```
+
+**Request Body:**
+```json
+{
+    "name": "Sales Metrics",
+    "description": "Track sales performance",
+    "period_type": "monthly",
+    "is_public": true
+}
+```
+
+#### Import CSV Data
+```
+POST /analytics/api/dashboard-templates/{id}/import_csv/
+```
+
+**Request:** Multipart form data with CSV file
+- `csv_file`: The CSV file to import
+
+**CSV Format:**
+```csv
+Period,Posts published (Target),Posts published (Actual),Connections (Target),Connections (Actual)
+Week 1,3,2,30,25
+Week 2,6,5,50,45
+```
+
+**Response:**
+```json
+{
+    "message": "CSV imported successfully",
+    "created_count": 12,
+    "updated_count": 0,
+    "warnings": []
+}
+```
+
+### Custom Metrics
+
+#### List Metrics
+```
+GET /analytics/api/custom-metrics/
+```
+
+**Query Parameters:**
+- `template`: Filter by template ID
+- `period`: Filter by period (e.g., "Week 1")
+- `metric_type`: Filter by metric type
+
+**Response:**
+```json
+{
+    "count": 24,
+    "results": [
+        {
+            "id": 1,
+            "template": 1,
+            "template_name": "Marketing Metrics",
+            "metric_name": "Posts published",
+            "description": "Number of social media posts published",
+            "target_value": "3.00",
+            "actual_value": "2.00",
+            "period": "Week 1",
+            "metric_type": "count",
+            "unit": "posts",
+            "percentage_achieved": 66.67,
+            "is_on_track": false,
+            "created_at": "2025-09-28T10:00:00Z"
+        }
+    ]
+}
+```
+
+#### Get Progress Summary
+```
+GET /analytics/api/custom-metrics/{id}/progress_summary/
+```
+
+**Response:**
+```json
+{
+    "metric_name": "Posts published",
+    "target_value": "3.00",
+    "actual_value": "2.00",
+    "percentage_achieved": 66.67,
+    "is_on_track": false,
+    "unit": "posts"
+}
+```
+
+### Metric Data Points
+
+#### List Data Points
+```
+GET /analytics/api/metric-data-points/
+```
+
+**Query Parameters:**
+- `metric__template`: Filter by template ID
+- `date_recorded`: Filter by date
+
+**Response:**
+```json
+{
+    "count": 10,
+    "results": [
+        {
+            "id": 1,
+            "metric": 1,
+            "metric_name": "Posts published",
+            "value": "2.00",
+            "date_recorded": "2025-09-28T10:00:00Z",
+            "notes": "Posted on LinkedIn and Twitter"
+        }
+    ]
+}
+```
+
+### Dashboard Views
+
+#### List Views
+```
+GET /analytics/api/dashboard-views/
+```
+
+**Response:**
+```json
+{
+    "count": 3,
+    "results": [
+        {
+            "id": 1,
+            "template": 1,
+            "template_name": "Marketing Metrics",
+            "name": "Progress Overview",
+            "description": "Weekly progress tracking",
+            "chart_type": "line",
+            "is_default": true,
+            "is_public": false,
+            "created_by": "admin",
+            "created_at": "2025-09-28T10:00:00Z"
+        }
+    ]
+}
+```
+
+### Reports
+
+#### List Reports
+```
+GET /analytics/api/reports/
+```
+
+**Query Parameters:**
+- `report_type`: Filter by report type
+- `is_public`: Filter by public/private
+- `created_by`: Filter by creator
+
+**Response:**
+```json
+{
+    "count": 5,
+    "results": [
+        {
+            "id": 1,
+            "name": "Monthly Sales Report",
+            "description": "Comprehensive sales analysis",
+            "report_type": "sales",
+            "is_public": true,
+            "is_active": true,
+            "created_by": "admin",
+            "created_at": "2025-09-28T10:00:00Z"
+        }
+    ]
+}
+```
+
+### Sales Goals
+
+#### List Goals
+```
+GET /analytics/api/sales-goals/
+```
+
+**Query Parameters:**
+- `goal_type`: Filter by goal type (revenue, deals, contacts, activities)
+- `period_type`: Filter by period (daily, weekly, monthly, quarterly, yearly)
+- `is_active`: Filter by active status
+
+**Response:**
+```json
+{
+    "count": 8,
+    "results": [
+        {
+            "id": 1,
+            "name": "Q4 Revenue Target",
+            "goal_type": "revenue",
+            "period_type": "quarterly",
+            "target_value": "500000.00",
+            "currency": "USD",
+            "start_date": "2025-10-01",
+            "end_date": "2025-12-31",
+            "is_active": true,
+            "created_at": "2025-09-28T10:00:00Z"
+        }
+    ]
+}
+```
+
+### Activity Summaries
+
+#### List Summaries
+```
+GET /analytics/api/activity-summaries/
+```
+
+**Query Parameters:**
+- `date`: Filter by specific date
+- `user`: Filter by user
+
+**Response:**
+```json
+{
+    "count": 30,
+    "results": [
+        {
+            "id": 1,
+            "date": "2025-09-28",
+            "user": "admin",
+            "calls_made": 5,
+            "emails_sent": 12,
+            "meetings_held": 3,
+            "tasks_completed": 8,
+            "deals_closed_won": 1,
+            "revenue_closed": "25000.00"
+        }
+    ]
+}
+```
+
+### Error Handling
+
+All analytics endpoints return appropriate HTTP status codes:
+
+- `200 OK`: Successful request
+- `201 Created`: Resource created successfully
+- `400 Bad Request`: Invalid request data
+- `401 Unauthorized`: Authentication required
+- `403 Forbidden`: Insufficient permissions
+- `404 Not Found`: Resource not found
+- `500 Internal Server Error`: Server error
+
+**Error Response Format:**
+```json
+{
+    "error": "Invalid CSV format",
+    "errors": [
+        "Row 2: Invalid target value for Posts published"
+    ],
+    "warnings": [
+        "Row 3: Missing actual value for Connections"
+    ]
+}
+```
+
 ## Webhooks (Coming Soon)
 - Real-time notifications for data changes
 - Configurable webhook endpoints
