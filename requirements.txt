@@ -1,5 +1,9 @@
 # Note: Install requirements-base.txt first for Python 3.13 compatibility
 # Run: pip install -r requirements-base.txt && pip install -r requirements.txt
+#
+# Python 3.13 compatibility notes:
+# - numpy, pandas, and Pillow versions updated to support Python 3.13
+# - Older versions may try to build from source and fail
 celery==5.3.4
 crispy-bootstrap5==0.7
 django-bootstrap5==23.3
@@ -14,9 +18,9 @@ django-tables2==2.6.0
 Django==4.2.7
 djangorestframework==3.14.0
 gunicorn==21.2.0
-numpy==1.25.2
-pandas==2.1.4
-Pillow==10.1.0
+numpy>=1.26.4
+pandas>=2.2.0
+Pillow>=10.3.0
 plotly==5.17.0
 psycopg2-binary==2.9.9
 python-decouple==3.8

@@ -1,5 +1,6 @@
 # Base requirements that must be installed first for Python 3.13 compatibility
 # Install this before requirements.txt: pip install -r requirements-base.txt
-setuptools>=65.5.0
-wheel>=0.40.0
-pip>=23.0
+# These versions ensure compatibility with Python 3.13 and packages that build from source
+setuptools>=69.0.0
+wheel>=0.42.0
+pip>=24.0
