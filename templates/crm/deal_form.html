@@ -1,0 +1,186 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if is_edit %}Edit Deal{% else %}Add Deal{% endif %} - Kikodo CRM{% endblock %}
+{% block page_title %}{% if is_edit %}Edit Deal: {{ form.instance.name }}{% else %}Add Deal{% endif %}{% endblock %}
+
+{% block page_actions %}
+{% if is_edit and deal %}
+<a href="{% url 'crm:deal_detail' deal.pk %}" class="btn btn-secondary">
+  <i class="fas fa-arrow-left"></i> Back to Deal
+</a>
+{% else %}
+<a href="{% url 'crm:deal_list' %}" class="btn btn-secondary">
+  <i class="fas fa-arrow-left"></i> Back to Deals
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <form method="post" novalidate id="deal-form">
+      {% csrf_token %}
+      <div class="row">
+        <div class="col-md-8 mb-3">
+          <label class="form-label" for="{{ form.name.id_for_label }}">Name</label>
+          {{ form.name }}
+          {% if form.name.errors %}
+          <div class="text-danger small">{{ form.name.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-4 mb-3">
+          <label class="form-label" for="{{ form.amount.id_for_label }}">Amount</label>
+          {{ form.amount }}
+          {% if form.amount.errors %}
+          <div class="text-danger small">{{ form.amount.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="{{ form.currency.id_for_label }}">Currency</label>
+          {{ form.currency }}
+          {% if form.currency.errors %}
+          <div class="text-danger small">{{ form.currency.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="{{ form.priority.id_for_label }}">Priority</label>
+          {{ form.priority }}
+          {% if form.priority.errors %}
+          <div class="text-danger small">{{ form.priority.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="{{ form.pipeline.id_for_label }}">Pipeline</label>
+          {{ form.pipeline }}
+          {% if form.pipeline.errors %}
+          <div class="text-danger small">{{ form.pipeline.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="{{ form.pipeline_stage.id_for_label }}">Stage</label>
+          {{ form.pipeline_stage }}
+          {% if form.pipeline_stage.errors %}
+          <div class="text-danger small">{{ form.pipeline_stage.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-4 mb-3">
+          <label class="form-label" for="{{ form.probability.id_for_label }}">Probability (%)</label>
+          {{ form.probability }}
+          {% if form.probability.errors %}
+          <div class="text-danger small">{{ form.probability.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-4 mb-3">
+          <label class="form-label" for="{{ form.expected_close_date.id_for_label }}">Expected close date</label>
+          {{ form.expected_close_date }}
+          {% if form.expected_close_date.errors %}
+          <div class="text-danger small">{{ form.expected_close_date.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-4 mb-3">
+          <label class="form-label" for="{{ form.actual_close_date.id_for_label }}">Actual close date</label>
+          {{ form.actual_close_date }}
+          {% if form.actual_close_date.errors %}
+          <div class="text-danger small">{{ form.actual_close_date.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="{{ form.contact.id_for_label }}">Contact</label>
+          {{ form.contact }}
+          {% if form.contact.errors %}
+          <div class="text-danger small">{{ form.contact.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="{{ form.company.id_for_label }}">Company</label>
+          {{ form.company }}
+          {% if form.company.errors %}
+          <div class="text-danger small">{{ form.company.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="{{ form.owner.id_for_label }}">Owner</label>
+          {{ form.owner }}
+          {% if form.owner.errors %}
+          <div class="text-danger small">{{ form.owner.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="{{ form.description.id_for_label }}">Description</label>
+        {{ form.description }}
+        {% if form.description.errors %}
+        <div class="text-danger small">{{ form.description.errors }}</div>
+        {% endif %}
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="{{ form.notes.id_for_label }}">Notes</label>
+        {{ form.notes }}
+        {% if form.notes.errors %}
+        <div class="text-danger small">{{ form.notes.errors }}</div>
+        {% endif %}
+      </div>
+      {% if custom_fields_with_values %}
+      <hr />
+      <h6 class="mb-3">Custom fields</h6>
+      {% for cf, cv in custom_fields_with_values %}
+      <div class="mb-3">
+        <label class="form-label" for="custom_{{ cf.id }}">{{ cf.label }}{% if cf.is_required %} *{% endif %}</label>
+        {% if cf.field_type == "text" or cf.field_type == "url" or cf.field_type == "email" %}
+        <input type="{% if cf.field_type == 'email' %}email{% else %}text{% endif %}" name="custom_{{ cf.id }}" id="custom_{{ cf.id }}" class="form-control" value="{% if cv %}{{ cv.get_value|default:'' }}{% endif %}">
+        {% elif cf.field_type == "number" %}
+        <input type="number" name="custom_{{ cf.id }}" id="custom_{{ cf.id }}" class="form-control" value="{% if cv and cv.number_value is not None %}{{ cv.number_value }}{% endif %}">
+        {% elif cf.field_type == "date" %}
+        <input type="date" name="custom_{{ cf.id }}" id="custom_{{ cf.id }}" class="form-control" value="{% if cv and cv.date_value %}{{ cv.date_value|date:'Y-m-d' }}{% endif %}">
+        {% elif cf.field_type == "boolean" %}
+        <input type="checkbox" name="custom_{{ cf.id }}" id="custom_{{ cf.id }}" class="form-check-input" {% if cv and cv.boolean_value %}checked{% endif %}>
+        {% elif cf.field_type == "select" %}
+        <select name="custom_{{ cf.id }}" id="custom_{{ cf.id }}" class="form-select">
+          <option value="">—</option>
+          {% for opt in cf.options %}
+          <option value="{{ opt }}" {% if cv and cv.json_value and opt in cv.json_value %}selected{% endif %}>{{ opt }}</option>
+          {% endfor %}
+        </select>
+        {% elif cf.field_type == "multiselect" %}
+        <select name="custom_{{ cf.id }}" id="custom_{{ cf.id }}" class="form-select" multiple>
+          {% for opt in cf.options %}
+          <option value="{{ opt }}" {% if cv and cv.json_value and opt in cv.json_value %}selected{% endif %}>{{ opt }}</option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <input type="text" name="custom_{{ cf.id }}" id="custom_{{ cf.id }}" class="form-control" value="{% if cv %}{{ cv.get_value|default:'' }}{% endif %}">
+        {% endif %}
+        {% if cf.description %}<div class="form-text">{{ cf.description }}</div>{% endif %}
+      </div>
+      {% endfor %}
+      {% endif %}
+      <button type="submit" class="btn btn-primary">{% if is_edit %}Save{% else %}Create{% endif %} Deal</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+  var pipelineSelect = document.getElementById('id_pipeline');
+  if (pipelineSelect) {
+    pipelineSelect.addEventListener('change', function() {
+      var url = new URL(window.location.href);
+      url.searchParams.set('pipeline', this.value || '');
+      window.location = url.toString();
+    });
+  }
+})();
+</script>
+{% endblock %}

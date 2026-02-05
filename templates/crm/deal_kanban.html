@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+
+{% block title %}Deals Kanban - Kikodo CRM{% endblock %}
+{% block page_title %}Deals Kanban{% if pipeline %} · {{ pipeline.name }}{% endif %}{% endblock %}
+
+{% block page_actions %}
+<a href="{% url 'crm:deal_list' %}" class="btn btn-outline-primary me-2">
+  <i class="fas fa-list"></i> List
+</a>
+<a href="{% url 'crm:deal_create' %}" class="btn btn-primary">
+  <i class="fas fa-plus"></i> Add Deal
+</a>
+{% if pipelines %}
+<div class="btn-group ms-2">
+  <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Pipeline</button>
+  <ul class="dropdown-menu">
+    <li><a class="dropdown-item {% if not pipeline %}active{% endif %}" href="{% url 'crm:deal_kanban' %}">Default</a></li>
+    {% for p in pipelines %}
+    <li><a class="dropdown-item {% if pipeline and pipeline.pk == p.pk %}active{% endif %}" href="{% url 'crm:deal_kanban' %}?pipeline={{ p.pk }}">{{ p.name }}</a></li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{% if not pipeline %}
+<div class="card">
+  <div class="card-body text-center text-muted">
+    <p class="mb-0">No default pipeline set. Choose a pipeline above or create one in Admin.</p>
+  </div>
+</div>
+{% else %}
+<div class="kanban-board d-flex overflow-auto pb-3" style="min-height: 70vh;">
+  {% for col in stage_columns %}
+  <div class="kanban-column flex-shrink-0 me-3" data-stage-id="{{ col.stage.pk }}" style="width: 320px;">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span class="fw-semibold">{{ col.stage.name }}</span>
+        <span class="badge bg-secondary">{{ col.deals|length }}</span>
+      </div>
+      <div class="card-body p-2 kanban-dropspace" data-stage-id="{{ col.stage.pk }}">
+        {% for deal in col.deals %}
+        <div class="kanban-card card mb-2 shadow-sm" data-deal-id="{{ deal.pk }}" draggable="true">
+          <div class="card-body py-2 px-3 small">
+            <a href="{% url 'crm:deal_detail' deal.pk %}" class="text-dark text-decoration-none fw-semibold d-block">{{ deal.name }}</a>
+            <div class="text-muted">${{ deal.amount|floatformat:0 }}</div>
+            {% if deal.contact %}<div class="text-muted">{{ deal.contact.full_name }}</div>{% endif %}
+            <div class="text-muted">{{ deal.expected_close_date|date:"M d" }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <div class="text-muted">No stages in this pipeline.</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<script>
+(function() {
+  var moveUrl = "{% url 'crm:deal_move_stage' %}";
+  var meta = document.querySelector('meta[name="csrf-token"]');
+  var csrfToken = meta ? meta.getAttribute('content') : (document.cookie.match(/csrftoken=([^;]+)/) || [])[1];
+
+  function handleDragStart(e) {
+    e.dataTransfer.setData('text/plain', e.currentTarget.dataset.dealId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.currentTarget.classList.add('opacity-50');
+  }
+  function handleDragEnd(e) {
+    e.currentTarget.classList.remove('opacity-50');
+  }
+  function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    e.currentTarget.classList.add('bg-light');
+  }
+  function handleDragLeave(e) {
+    e.currentTarget.classList.remove('bg-light');
+  }
+  function handleDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('bg-light');
+    var dealId = e.dataTransfer.getData('text/plain');
+    var stageId = e.currentTarget.dataset.stageId;
+    if (!dealId || !stageId) return;
+    var formData = new FormData();
+    formData.append('deal_id', dealId);
+    formData.append('stage_id', stageId);
+    formData.append('csrfmiddlewaretoken', csrfToken);
+    fetch(moveUrl, {
+      method: 'POST',
+      body: formData,
+      headers: { 'X-CSRFToken': csrfToken },
+      credentials: 'same-origin'
+    }).then(function(r) {
+      return r.json().then(function(data) {
+        if (data.ok) window.location.reload();
+        else alert(data.error || 'Failed to move deal');
+      });
+    }).catch(function() { alert('Failed to move deal'); });
+  }
+
+  document.querySelectorAll('.kanban-card').forEach(function(el) {
+    el.addEventListener('dragstart', handleDragStart);
+    el.addEventListener('dragend', handleDragEnd);
+  });
+  document.querySelectorAll('.kanban-dropspace').forEach(function(el) {
+    el.addEventListener('dragover', handleDragOver);
+    el.addEventListener('dragleave', handleDragLeave);
+    el.addEventListener('drop', handleDrop);
+  });
+})();
+</script>
+{% endblock %}

@@ -29,6 +29,6 @@ urlpatterns = [
     path("", views.analytics_dashboard, name="dashboard"),
     path("reports/", views.analytics_reports, name="reports"),
     path("templates/", views.analytics_templates, name="templates"),
-    path("bases/", views.analytics_bases, name="bases"),
+    # path("bases/", views.analytics_bases, name="bases"),  # Removed - Bases feature not in use
     path("api/", include(router.urls)),
 ]

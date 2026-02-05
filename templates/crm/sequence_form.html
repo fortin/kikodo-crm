@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if sequence %}Edit Sequence - Kikodo CRM{% else %}New Sequence - Kikodo CRM{% endif %}{% endblock %}
+{% block page_title %}{% if sequence %}Edit: {{ sequence.name }}{% else %}New Messaging Sequence{% endif %}{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <form method="post">
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+
+      <div class="mb-3">
+        <label class="form-label">Name</label>
+        {{ form.name }}
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Description</label>
+        {{ form.description }}
+      </div>
+      <div class="form-check mb-3">
+        {{ form.is_active }}
+        <label class="form-check-label">Active</label>
+      </div>
+
+      <hr />
+      <h5 class="mb-3">Steps</h5>
+      {{ formset.management_form }}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle small">
+          <thead>
+            <tr>
+              <th style="width: 80px;">Order</th>
+              <th style="width: 120px;">After (days)</th>
+              <th style="width: 140px;">Medium</th>
+              <th style="width: 80px;">Auto?</th>
+              <th>Subject</th>
+              <th>Body</th>
+              <th style="width: 60px;">Delete</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for step_form in formset %}
+            <tr>
+              <td>{{ step_form.order }}</td>
+              <td>{{ step_form.offset_days }}</td>
+              <td>{{ step_form.activity_type }}</td>
+              <td>{{ step_form.auto_execute }}</td>
+              <td>{{ step_form.subject }}</td>
+              <td>{{ step_form.body }}</td>
+              <td class="text-center">
+                {% if step_form.instance.pk %}
+                {{ step_form.DELETE }}
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-4 d-flex justify-content-between align-items-center">
+        <div>
+          <button type="submit" name="action" value="suggest" class="btn btn-outline-secondary me-2">
+            <i class="fas fa-magic"></i> Suggest steps with AI
+          </button>
+          <span class="text-muted small">Uses sequence name and description to suggest steps and timings (Ollama).</span>
+        </div>
+        <div>
+          {% if sequence %}
+          <a href="{% url 'crm:sequence_detail' sequence.pk %}" class="btn btn-secondary me-2">Cancel</a>
+          <button type="submit" class="btn btn-primary">Update Sequence</button>
+          {% else %}
+          <a href="{% url 'crm:sequence_list' %}" class="btn btn-secondary me-2">Cancel</a>
+          <button type="submit" class="btn btn-primary">Save Sequence</button>
+          {% endif %}
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+

@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+
+{% block title %}Import CSV - Kikodo CRM{% endblock %}
+
+{% block page_title %}Import from CSV{% endblock %}
+
+{% block page_actions %}
+<a href="{% url 'crm:dashboard' %}" class="btn btn-secondary">
+  <i class="fas fa-arrow-left"></i> Back to Dashboard
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <div class="alert alert-info">
+      <i class="fas fa-info-circle"></i>
+      <strong>CSV Import Guide:</strong>
+      <ul class="mb-0 mt-2">
+        <li>The system will automatically detect and map CSV columns to contact and company fields</li>
+        <li>Common column names will be automatically recognized using fuzzy matching</li>
+        <li>You can import contacts only, companies only, or both from the same CSV file</li>
+        <li>If importing contacts, companies can be automatically created if they don't exist</li>
+        <li>Duplicate records will be skipped unless "Update Existing" is checked</li>
+      </ul>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" novalidate>
+      {% csrf_token %}
+      
+      <div class="mb-3">
+        <label class="form-label" for="{{ form.csv_file.id_for_label }}">{{ form.csv_file.label }}</label>
+        {{ form.csv_file }}
+        {% if form.csv_file.help_text %}
+        <div class="form-text">{{ form.csv_file.help_text }}</div>
+        {% endif %}
+        {% if form.csv_file.errors %}
+        <div class="text-danger small">{{ form.csv_file.errors }}</div>
+        {% endif %}
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label" for="{{ form.import_type.id_for_label }}">{{ form.import_type.label }}</label>
+        {{ form.import_type }}
+        {% if form.import_type.help_text %}
+        <div class="form-text">{{ form.import_type.help_text }}</div>
+        {% endif %}
+        {% if form.import_type.errors %}
+        <div class="text-danger small">{{ form.import_type.errors }}</div>
+        {% endif %}
+      </div>
+
+      <div class="mb-3">
+        <div class="form-check">
+          {{ form.create_companies }}
+          <label class="form-check-label" for="{{ form.create_companies.id_for_label }}">
+            {{ form.create_companies.label }}
+          </label>
+          {% if form.create_companies.help_text %}
+          <div class="form-text">{{ form.create_companies.help_text }}</div>
+          {% endif %}
+        </div>
+        {% if form.create_companies.errors %}
+        <div class="text-danger small">{{ form.create_companies.errors }}</div>
+        {% endif %}
+      </div>
+
+      <div class="mb-3">
+        <div class="form-check">
+          {{ form.update_existing }}
+          <label class="form-check-label" for="{{ form.update_existing.id_for_label }}">
+            {{ form.update_existing.label }}
+          </label>
+          {% if form.update_existing.help_text %}
+          <div class="form-text">{{ form.update_existing.help_text }}</div>
+          {% endif %}
+        </div>
+        {% if form.update_existing.errors %}
+        <div class="text-danger small">{{ form.update_existing.errors }}</div>
+        {% endif %}
+      </div>
+
+      <div class="d-flex justify-content-end mt-4">
+        <a href="{% url 'crm:dashboard' %}" class="btn btn-secondary me-2">
+          Cancel
+        </a>
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-upload"></i> Import CSV
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

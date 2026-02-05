@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ sequence.name }} - Sequence - Kikodo CRM{% endblock %}
+{% block page_title %}{{ sequence.name }}{% endblock %}
+
+{% block page_actions %}
+<a href="{% url 'crm:sequence_edit' sequence.pk %}" class="btn btn-outline-primary me-2">
+  <i class="fas fa-edit"></i> Edit
+</a>
+<a href="{% url 'crm:sequence_enroll' sequence.pk %}" class="btn btn-primary me-2">
+  <i class="fas fa-user-plus"></i> Add contacts
+</a>
+<a href="{% url 'crm:sequence_list' %}" class="btn btn-outline-secondary">Back to sequences</a>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-header">Details</div>
+      <div class="card-body">
+        {% if sequence.description %}
+        <p class="text-muted small mb-2">{{ sequence.description }}</p>
+        {% endif %}
+        <div class="small">
+          <span class="badge {% if sequence.is_active %}bg-success{% else %}bg-secondary{% endif %}">
+            {% if sequence.is_active %}Active{% else %}Inactive{% endif %}
+          </span>
+          <span class="text-muted ms-1">· {{ sequence.steps.count }} step(s)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header">Steps</div>
+      <div class="card-body p-0">
+        {% if steps %}
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0 small">
+            <thead class="table-light">
+              <tr>
+                <th style="width: 60px;">#</th>
+                <th style="width: 80px;">After (days)</th>
+                <th>Type</th>
+                <th>Subject</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for step in steps %}
+              <tr>
+                <td>{{ step.order }}</td>
+                <td>{{ step.offset_days }}</td>
+                <td>{{ step.get_activity_type_display }}</td>
+                <td>{{ step.subject|default:"—"|truncatewords:8 }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="p-3 text-muted small">No steps defined.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Enrolled contacts</span>
+        <a href="{% url 'crm:sequence_enroll' sequence.pk %}" class="btn btn-sm btn-outline-primary">
+          <i class="fas fa-plus"></i> Add contacts
+        </a>
+      </div>
+      <div class="card-body p-0">
+        {% if enrollments %}
+        <div class="table-responsive">
+          <table class="table table-hover table-sm mb-0 small">
+            <thead class="table-light">
+              <tr>
+                <th>Contact</th>
+                <th>Status</th>
+                <th>Next step</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for e in enrollments %}
+              <tr>
+                <td>
+                  <a href="{% url 'crm:contact_detail' e.contact_id %}">{{ e.contact.full_name }}</a>
+                  {% if e.contact.company %}
+                  <span class="text-muted">· {{ e.contact.company.name }}</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="badge
+                    {% if e.status == 'active' %}bg-primary
+                    {% elif e.status == 'completed' %}bg-success
+                    {% elif e.status == 'paused' %}bg-warning text-dark
+                    {% else %}bg-secondary{% endif %}">
+                    {{ e.get_status_display }}
+                  </span>
+                </td>
+                <td>
+                  {% if e.next_run_at %}
+                  {{ e.next_run_at|date:"M d, Y H:i" }}
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="p-4 text-center text-muted">
+          <i class="fas fa-users fa-2x mb-2"></i>
+          <p class="mb-2">No contacts enrolled yet</p>
+          <a href="{% url 'crm:sequence_enroll' sequence.pk %}" class="btn btn-sm btn-primary">Add contacts</a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

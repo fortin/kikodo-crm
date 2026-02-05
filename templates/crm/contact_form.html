@@ -1,0 +1,237 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if form.instance.pk %}Edit{% else %}Add{% endif %} Contact - Kikodo CRM{% endblock %}
+
+{% block page_title %}{% if form.instance.pk %}Edit Contact: {{ form.instance.full_name }}{% else %}Add Contact{% endif %}{% endblock %}
+
+{% block page_actions %}
+{% if form.instance.pk %}
+<a href="{% url 'crm:contact_detail' form.instance.pk %}" class="btn btn-secondary">
+  <i class="fas fa-arrow-left"></i> Back to Contact
+</a>
+{% else %}
+<a href="{% url 'crm:contact_list' %}" class="btn btn-secondary">
+  <i class="fas fa-arrow-left"></i> Back to Contacts
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="{{ form.salutation.id_for_label }}">Salutation</label>
+          {{ form.salutation }}
+          {% if form.salutation.errors %}
+          <div class="text-danger small">{{ form.salutation.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-6"></div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="{{ form.first_name.id_for_label }}">First name</label>
+          {{ form.first_name }}
+          {% if form.first_name.errors %}
+          <div class="text-danger small">{{ form.first_name.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="{{ form.last_name.id_for_label }}">Last name</label>
+          {{ form.last_name }}
+          {% if form.last_name.errors %}
+          <div class="text-danger small">{{ form.last_name.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="{{ form.email.id_for_label }}">Email</label>
+          {{ form.email }}
+          {% if form.email.errors %}
+          <div class="text-danger small">{{ form.email.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-3 mb-3">
+          <label class="form-label" for="{{ form.phone.id_for_label }}">Phone</label>
+          {{ form.phone }}
+          {% if form.phone.errors %}
+          <div class="text-danger small">{{ form.phone.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-3 mb-3">
+          <label class="form-label" for="{{ form.mobile.id_for_label }}">Mobile</label>
+          {{ form.mobile }}
+          {% if form.mobile.errors %}
+          <div class="text-danger small">{{ form.mobile.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="{{ form.job_title.id_for_label }}">Job title</label>
+          {{ form.job_title }}
+          {% if form.job_title.errors %}
+          <div class="text-danger small">{{ form.job_title.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="{{ form.department.id_for_label }}">Department</label>
+          {{ form.department }}
+          {% if form.department.errors %}
+          <div class="text-danger small">{{ form.department.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-4 mb-3">
+          <label class="form-label" for="{{ form.company.id_for_label }}">Company</label>
+          {{ form.company }}
+          {% if form.company.errors %}
+          <div class="text-danger small">{{ form.company.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-2 mb-3">
+          <label class="form-label" for="{{ form.status.id_for_label }}">Status</label>
+          {{ form.status }}
+          {% if form.status.errors %}
+          <div class="text-danger small">{{ form.status.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-2 mb-3">
+          <label class="form-label" for="{{ form.outreach_status.id_for_label }}">Outreach status</label>
+          {{ form.outreach_status }}
+          {% if form.outreach_status.errors %}
+          <div class="text-danger small">{{ form.outreach_status.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-4 mb-3">
+          <label class="form-label" for="{{ form.source.id_for_label }}">Source</label>
+          {{ form.source }}
+          {% if form.source.errors %}
+          <div class="text-danger small">{{ form.source.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label" for="{{ form.notes.id_for_label }}">Notes</label>
+        {{ form.notes }}
+        {% if form.notes.errors %}
+        <div class="text-danger small">{{ form.notes.errors }}</div>
+        {% endif %}
+      </div>
+
+      <div class="row">
+        <div class="col-md-8 mb-3">
+          <label class="form-label" for="{{ form.address.id_for_label }}">Address</label>
+          {{ form.address }}
+          {% if form.address.errors %}
+          <div class="text-danger small">{{ form.address.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-4 mb-3">
+          <label class="form-label" for="{{ form.city.id_for_label }}">City</label>
+          {{ form.city }}
+          {% if form.city.errors %}
+          <div class="text-danger small">{{ form.city.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-4 mb-3">
+          <label class="form-label" for="{{ form.state.id_for_label }}">State</label>
+          {{ form.state }}
+          {% if form.state.errors %}
+          <div class="text-danger small">{{ form.state.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-4 mb-3">
+          <label class="form-label" for="{{ form.country.id_for_label }}">Country</label>
+          {{ form.country }}
+          {% if form.country.errors %}
+          <div class="text-danger small">{{ form.country.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-4 mb-3">
+          <label class="form-label" for="{{ form.postal_code.id_for_label }}">Postal code</label>
+          {{ form.postal_code }}
+          {% if form.postal_code.errors %}
+          <div class="text-danger small">{{ form.postal_code.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="{{ form.linkedin.id_for_label }}">LinkedIn URL</label>
+          {{ form.linkedin }}
+          {% if form.linkedin.errors %}
+          <div class="text-danger small">{{ form.linkedin.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="{{ form.twitter_handle.id_for_label }}">Twitter handle</label>
+          {{ form.twitter_handle }}
+          {% if form.twitter_handle.errors %}
+          <div class="text-danger small">{{ form.twitter_handle.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-end mt-4">
+        <a href="{% url 'crm:contact_list' %}" class="btn btn-secondary me-2">
+          Cancel
+        </a>
+      {% if custom_fields_with_values %}
+      <hr />
+      <h6 class="mb-3">Custom fields</h6>
+      {% for cf, cv in custom_fields_with_values %}
+      <div class="mb-3">
+        <label class="form-label" for="custom_{{ cf.id }}">{{ cf.label }}{% if cf.is_required %} *{% endif %}</label>
+        {% if cf.field_type == "text" or cf.field_type == "url" or cf.field_type == "email" %}
+        <input type="{% if cf.field_type == 'email' %}email{% else %}text{% endif %}" name="custom_{{ cf.id }}" id="custom_{{ cf.id }}" class="form-control" value="{% if cv %}{{ cv.get_value|default:'' }}{% endif %}">
+        {% elif cf.field_type == "number" %}
+        <input type="number" name="custom_{{ cf.id }}" id="custom_{{ cf.id }}" class="form-control" value="{% if cv and cv.number_value is not None %}{{ cv.number_value }}{% endif %}">
+        {% elif cf.field_type == "date" %}
+        <input type="date" name="custom_{{ cf.id }}" id="custom_{{ cf.id }}" class="form-control" value="{% if cv and cv.date_value %}{{ cv.date_value|date:'Y-m-d' }}{% endif %}">
+        {% elif cf.field_type == "boolean" %}
+        <input type="checkbox" name="custom_{{ cf.id }}" id="custom_{{ cf.id }}" class="form-check-input" {% if cv and cv.boolean_value %}checked{% endif %}>
+        {% elif cf.field_type == "select" %}
+        <select name="custom_{{ cf.id }}" id="custom_{{ cf.id }}" class="form-select">
+          <option value="">—</option>
+          {% for opt in cf.options %}
+          <option value="{{ opt }}" {% if cv and cv.json_value and opt in cv.json_value %}selected{% endif %}>{{ opt }}</option>
+          {% endfor %}
+        </select>
+        {% elif cf.field_type == "multiselect" %}
+        <select name="custom_{{ cf.id }}" id="custom_{{ cf.id }}" class="form-select" multiple>
+          {% for opt in cf.options %}
+          <option value="{{ opt }}" {% if cv and cv.json_value and opt in cv.json_value %}selected{% endif %}>{{ opt }}</option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <input type="text" name="custom_{{ cf.id }}" id="custom_{{ cf.id }}" class="form-control" value="{% if cv %}{{ cv.get_value|default:'' }}{% endif %}">
+        {% endif %}
+        {% if cf.description %}<div class="form-text">{{ cf.description }}</div>{% endif %}
+      </div>
+      {% endfor %}
+      {% endif %}
+
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-save"></i> {% if form.instance.pk %}Update{% else %}Create{% endif %} Contact
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+

@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+
+{% block title %}Duplicate Contacts - Kikodo CRM{% endblock %}
+{% block page_title %}Duplicate contacts{% endblock %}
+
+{% block page_actions %}
+<a href="{% url 'crm:contact_list' %}" class="btn btn-secondary">
+  <i class="fas fa-arrow-left"></i> Back to Contacts
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    {% if groups %}
+    <p class="text-muted small">Select one contact to keep (canonical) and one or more to merge into it. Merged contacts will be deactivated and their activities/deals moved to the canonical.</p>
+    {% for key_type, key, candidates in groups %}
+    <form method="post" action="{% url 'crm:contact_merge' %}" class="mb-4">
+      {% csrf_token %}
+      <div class="card mb-3">
+        <div class="card-header">
+          {% if key_type == "name" %}Same name{% else %}Same email{% endif %}: <strong>{{ key }}</strong>
+        </div>
+        <div class="card-body">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>Keep</th>
+                <th>Merge</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Company</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in candidates %}
+              <tr>
+                <td><input type="radio" name="canonical_id" value="{{ c.pk }}" required></td>
+                <td><input type="checkbox" name="duplicate_ids" value="{{ c.pk }}"></td>
+                <td><a href="{% url 'crm:contact_detail' c.pk %}">{{ c.full_name }}</a></td>
+                <td>{{ c.email|default:"—" }}</td>
+                <td>{% if c.company %}<a href="{% url 'crm:company_detail' c.company.pk %}">{{ c.company.name }}</a>{% else %}—{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <button type="submit" class="btn btn-primary btn-sm">Merge selected into canonical</button>
+        </div>
+      </div>
+    </form>
+    {% endfor %}
+    {% else %}
+    <p class="mb-0 text-muted">No duplicate contact groups found.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

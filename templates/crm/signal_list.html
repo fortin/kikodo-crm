@@ -1,0 +1,193 @@
+{% extends 'base.html' %}
+
+{% block title %}Signals - Kikodo CRM{% endblock %}
+{% block page_title %}Signals{% endblock %}
+
+{% block page_actions %}
+<a href="{% url 'crm:signal_export_csv' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-success me-2">
+  <i class="fas fa-download"></i> Export CSV
+</a>
+<a href="{% url 'crm:signal_create' %}" class="btn btn-primary">
+  <i class="fas fa-plus"></i> Add from URL
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body p-0">
+    <form method="get" id="signal-filter-form" class="px-3 py-2 border-bottom bg-light">
+      <input type="hidden" name="sort" value="{{ sort_by }}">
+      <input type="hidden" name="order" value="{{ sort_order }}">
+      <div class="row g-2 align-items-end">
+        <div class="col-auto">
+          <label class="form-label mb-1 d-block">&nbsp;</label>
+          <div class="dropdown" data-bs-auto-close="outside">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="filter-industry-btn" data-bs-toggle="dropdown" aria-expanded="false">
+              Industry {% if filters.industry %}<span class="badge bg-primary ms-1">{{ filters.industry|length }}</span>{% endif %}
+            </button>
+            <ul class="dropdown-menu px-3 py-2" style="max-height: 280px; overflow-y: auto; min-width: 200px;" aria-labelledby="filter-industry-btn">
+              {% for ind in industries %}
+              <li class="py-1">
+                <label class="d-flex align-items-center gap-2 small mb-0 cursor-pointer">
+                  <input type="checkbox" name="industry" value="{{ ind }}" {% if ind in filters.industry %}checked{% endif %} class="form-check-input">
+                  <span>{{ ind }}</span>
+                </label>
+              </li>
+              {% endfor %}
+              {% if not industries %}
+              <li class="small text-muted">No industries</li>
+              {% endif %}
+            </ul>
+          </div>
+        </div>
+        <div class="col-auto">
+          <a href="{% url 'crm:signal_list' %}" class="btn btn-outline-secondary btn-sm px-2" title="Clear filters" aria-label="Clear filters">&times;</a>
+        </div>
+      </div>
+    </form>
+    <div class="table-responsive">
+      <table class="table table-hover table-striped table-sm mb-0 small">
+        <thead class="table-light">
+          <tr>
+            <th>
+              <a href="?sort=headline&order={% if sort_by == 'headline' %}{{ next_order }}{% else %}desc{% endif %}{% if filter_query %}&{{ filter_query }}{% endif %}" class="text-decoration-none text-dark">
+                Headline / Key Point
+                {% if sort_by == 'headline' %}
+                  <i class="fas fa-sort-{% if sort_order == 'desc' %}down{% else %}up{% endif %}"></i>
+                {% else %}
+                  <i class="fas fa-sort text-muted"></i>
+                {% endif %}
+              </a>
+            </th>
+            <th>
+              <a href="?sort=date_logged&order={% if sort_by == 'date_logged' %}{{ next_order }}{% else %}desc{% endif %}{% if filter_query %}&{{ filter_query }}{% endif %}" class="text-decoration-none text-dark">
+                Date
+                {% if sort_by == 'date_logged' %}
+                  <i class="fas fa-sort-{% if sort_order == 'desc' %}down{% else %}up{% endif %}"></i>
+                {% else %}
+                  <i class="fas fa-sort text-muted"></i>
+                {% endif %}
+              </a>
+            </th>
+            <th>Week</th>
+            <th>Source Type</th>
+            <th>Relevance</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for signal in signals %}
+          <tr>
+            <td class="fw-semibold">
+              <a href="{% url 'crm:signal_detail' signal.pk %}" class="text-decoration-none text-dark">
+                {{ signal.headline|default:"—"|truncatewords:12 }}
+              </a>
+            </td>
+            <td>{{ signal.date_logged|date:"Y-m-d"|default:"—" }}</td>
+            <td>{{ signal.week|default:"—" }}</td>
+            <td>
+              <span class="badge bg-secondary">
+                {{ signal.get_source_type_display|default:"—" }}
+              </span>
+            </td>
+            <td>
+              {% if signal.relevance == 'high' %}
+                <span class="badge bg-danger">🔴 High</span>
+              {% elif signal.relevance == 'medium' %}
+                <span class="badge bg-warning text-dark">🟠 Medium</span>
+              {% elif signal.relevance == 'low' %}
+                <span class="badge bg-light text-dark">⚪️ Low</span>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>
+              <span class="badge bg-info">{{ signal.get_status_display }}</span>
+            </td>
+            <td class="text-end">
+              {% if signal.source_url %}
+              <a href="{{ signal.source_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-link text-decoration-none me-1">
+                Source
+              </a>
+              {% endif %}
+              <a href="{% url 'crm:signal_edit' signal.pk %}" class="btn btn-sm btn-link text-decoration-none me-1">
+                Edit
+              </a>
+              <a href="{% url 'crm:signal_delete' signal.pk %}" class="btn btn-sm btn-link text-danger text-decoration-none">
+                Delete
+              </a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="7" class="text-center text-muted py-4">
+              No signals yet. <a href="{% url 'crm:signal_create' %}">Add from URL</a> to fetch a page and populate with LLM (Ollama).
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<div class="mt-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <form method="get" class="d-flex align-items-center gap-2">
+    {% for key, value in request.GET.items %}
+      {% if key != 'page_size' and key != 'page' %}
+        <input type="hidden" name="{{ key }}" value="{{ value }}">
+      {% endif %}
+    {% endfor %}
+    <label class="small mb-0">
+      Rows per page:
+      <select name="page_size" class="form-select form-select-sm d-inline-block w-auto" onchange="this.form.submit()">
+        {% for size in page_size_options %}
+          <option value="{{ size }}" {% if size == page_size %}selected{% endif %}>{{ size }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+  {% if page_obj %}
+  <nav aria-label="Signals pagination" class="d-inline-block">
+    <ul class="pagination pagination-sm mb-0">
+      {% if page_obj.has_previous %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ page_obj.previous_page_number }}&page_size={{ page_size }}{% if filter_query %}&{{ filter_query }}{% endif %}&sort={{ sort_by }}&order={{ sort_order }}">&laquo;</a>
+        </li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">&laquo;</span></li>
+      {% endif %}
+      {% for num in page_obj.paginator.page_range %}
+        {% if num == page_obj.number %}
+          <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+        {% elif num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
+          <li class="page-item">
+            <a class="page-link" href="?page={{ num }}&page_size={{ page_size }}{% if filter_query %}&{{ filter_query }}{% endif %}&sort={{ sort_by }}&order={{ sort_order }}">{{ num }}</a>
+          </li>
+        {% endif %}
+      {% endfor %}
+      {% if page_obj.has_next %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ page_obj.next_page_number }}&page_size={{ page_size }}{% if filter_query %}&{{ filter_query }}{% endif %}&sort={{ sort_by }}&order={{ sort_order }}">&raquo;</a>
+        </li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">&raquo;</span></li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% endif %}
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var signalFilterForm = document.getElementById('signal-filter-form');
+  if (signalFilterForm) {
+    function submitSignalFilters() { signalFilterForm.submit(); }
+    var btn = document.getElementById('filter-industry-btn');
+    if (btn) {
+      var dropdownEl = btn.closest('.dropdown');
+      if (dropdownEl) dropdownEl.addEventListener('hidden.bs.dropdown', submitSignalFilters);
+    }
+  }
+});
+</script>
+{% endblock %}

@@ -5,9 +5,15 @@
 {% block page_title %}Deals{% endblock %}
 
 {% block page_actions %}
-<button class="btn btn-primary">
-    <i class="fas fa-plus"></i> Add Deal
-</button>
+<a href="{% url 'crm:deal_kanban' %}" class="btn btn-outline-primary me-2">
+  <i class="fas fa-columns"></i> Kanban
+</a>
+<a href="{% url 'crm:deal_forecast' %}" class="btn btn-outline-secondary me-2">
+  <i class="fas fa-chart-line"></i> Forecast
+</a>
+<a href="{% url 'crm:deal_create' %}" class="btn btn-primary">
+  <i class="fas fa-plus"></i> Add Deal
+</a>
 {% endblock %}
 
 {% block content %}
@@ -16,7 +22,7 @@
         {% if deals %}
             <div class="data-grid">
                 {% for deal in deals %}
-                    <div class="data-grid-row">
+                    <a href="{% url 'crm:deal_detail' deal.pk %}" class="data-grid-row text-decoration-none text-dark">
                         <div class="flex-grow-1">
                             <div class="fw-semibold">{{ deal.name }}</div>
                             <div class="text-muted small">
@@ -28,12 +34,58 @@
                         </div>
                         <div class="text-end">
                             <div class="fw-semibold">${{ deal.amount|floatformat:0 }}</div>
-                            <span class="badge bg-info">{{ deal.get_stage_display }}</span>
+                            <span class="badge bg-info">{{ deal.stage_display }}</span>
                             <div class="text-muted small">{{ deal.expected_close_date|date:"M d, Y" }}</div>
                         </div>
-                    </div>
+                    </a>
                 {% endfor %}
             </div>
+            {% if page_obj %}
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 px-3 py-2 border-top">
+                <form method="get" class="d-flex align-items-center gap-2">
+                    {% for key, value in request.GET.items %}
+                        {% if key != 'page_size' and key != 'page' %}
+                            <input type="hidden" name="{{ key }}" value="{{ value }}">
+                        {% endif %}
+                    {% endfor %}
+                    <label class="small mb-0">
+                        Rows per page:
+                        <select name="page_size" class="form-select form-select-sm d-inline-block w-auto" onchange="this.form.submit()">
+                            {% for size in page_size_options %}
+                                <option value="{{ size }}" {% if size == page_size %}selected{% endif %}>{{ size }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </form>
+                <nav aria-label="Deals pagination" class="d-inline-block">
+                    <ul class="pagination pagination-sm mb-0">
+                        {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&page_size={{ page_size }}{% if request.GET.urlencode %}&{{ request.GET.urlencode }}{% endif %}">&laquo;</a>
+                            </li>
+                        {% else %}
+                            <li class="page-item disabled"><span class="page-link">&laquo;</span></li>
+                        {% endif %}
+                        {% for num in page_obj.paginator.page_range %}
+                            {% if num == page_obj.number %}
+                                <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                            {% elif num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ num }}&page_size={{ page_size }}{% if request.GET.urlencode %}&{{ request.GET.urlencode }}{% endif %}">{{ num }}</a>
+                                </li>
+                            {% endif %}
+                        {% endfor %}
+                        {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&page_size={{ page_size }}{% if request.GET.urlencode %}&{{ request.GET.urlencode }}{% endif %}">&raquo;</a>
+                            </li>
+                        {% else %}
+                            <li class="page-item disabled"><span class="page-link">&raquo;</span></li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            </div>
+            {% endif %}
         {% else %}
             <div class="p-4 text-center text-muted">
                 <i class="fas fa-handshake fa-2x mb-2"></i>

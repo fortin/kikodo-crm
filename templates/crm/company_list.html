@@ -1,41 +1,453 @@
-{% extends 'base.html' %} {% block title %}Companies - Kikodo CRM{% endblock %}
-{% block page_title %}Companies{% endblock %} {% block page_actions %}
-<button class="btn btn-primary"><i class="fas fa-plus"></i> Add Company</button>
-{% endblock %} {% block content %}
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Companies - Kikodo CRM{% endblock %}
+
+{% block page_title %}Companies{% endblock %}
+
+{% block page_actions %}
+<a href="{% url 'crm:company_export_csv' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-success me-2">
+  <i class="fas fa-download"></i> Export CSV
+</a>
+<a href="{% url 'crm:company_import_csv' %}" class="btn btn-outline-primary me-2">
+  <i class="fas fa-upload"></i> Import CSV
+</a>
+<a href="{% url 'crm:company_duplicates' %}" class="btn btn-outline-secondary me-2">
+  <i class="fas fa-copy"></i> Find duplicates
+</a>
+<a href="{% url 'crm:company_create' %}" class="btn btn-primary">
+  <i class="fas fa-plus"></i> Add Company
+</a>
+{% endblock %}
+
+{% block content %}
+<form id="bulk-delete-form" action="{% url 'crm:company_bulk_delete' %}" method="post" class="d-none">
+  {% csrf_token %}
+</form>
 <div class="card">
   <div class="card-body p-0">
-    {% if companies %}
-    <div class="data-grid">
-      {% for company in companies %}
-      <div class="data-grid-row">
-        <div class="flex-grow-1">
-          <div class="fw-semibold">{{ company.name }}</div>
-          <div class="text-muted small">
-            {% if company.industry %} {{ company.industry }} {% endif %} {% if
-            company.city %} • {{ company.city }}, {{ company.state }} {% endif
-            %}
+    <div id="bulk-actions-bar" class="d-flex align-items-center gap-2 px-3 py-2 bg-light border-bottom" style="display: none !important;">
+      <span id="bulk-selected-count" class="fw-medium">0</span> selected
+      <button type="button" id="bulk-delete-btn" class="btn btn-outline-danger btn-sm" title="Delete selected">
+        <i class="fas fa-trash-alt"></i> Delete
+      </button>
+    </div>
+    <form method="get" id="company-filter-form" class="px-3 py-3 border-bottom bg-light">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label mb-1"># Facilities</label>
+          <div class="d-flex gap-1">
+            <input type="number" name="facilities_min" class="form-control form-control-sm" placeholder="Min" value="{{ filters.facilities_min }}">
+            <input type="number" name="facilities_max" class="form-control form-control-sm" placeholder="Max" value="{{ filters.facilities_max }}">
           </div>
         </div>
-        <div class="text-end">
-          {% if company.annual_revenue %}
-          <div class="fw-semibold">
-            ${{ company.annual_revenue|floatformat:0 }}
+        <div class="col-md-2">
+          <label class="form-label mb-1" for="filter-pain-type">Pain Type</label>
+          <select id="filter-pain-type" name="pain_type" class="form-select form-select-sm">
+            <option value="">Any</option>
+            {% for pt in pain_types %}
+              <option value="{{ pt.code }}" {% if filters.pain_type == pt.code %}selected{% endif %}>{{ pt.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label mb-1" for="filter-priority">Priority Tier</label>
+          <select id="filter-priority" name="priority_tier" class="form-select form-select-sm">
+            <option value="">Any</option>
+            <option value="1" {% if filters.priority_tier == '1' %}selected{% endif %}>Tier 1</option>
+            <option value="2" {% if filters.priority_tier == '2' %}selected{% endif %}>Tier 2</option>
+            <option value="3" {% if filters.priority_tier == '3' %}selected{% endif %}>Tier 3</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label mb-1" for="filter-outreach">Outreach Status</label>
+          <select id="filter-outreach" name="outreach_status" class="form-select form-select-sm">
+            <option value="">Any</option>
+            <option value="not_contacted" {% if filters.outreach_status == 'not_contacted' %}selected{% endif %}>Not contacted</option>
+            <option value="reached_out" {% if filters.outreach_status == 'reached_out' %}selected{% endif %}>Reached out</option>
+            <option value="responded" {% if filters.outreach_status == 'responded' %}selected{% endif %}>Responded</option>
+            <option value="bounced" {% if filters.outreach_status == 'bounced' %}selected{% endif %}>Bounced</option>
+            <option value="not_a_fit" {% if filters.outreach_status == 'not_a_fit' %}selected{% endif %}>Not a fit</option>
+          </select>
+        </div>
+        <div class="col-auto">
+          <label class="form-label mb-1 d-block">&nbsp;</label>
+          <div class="dropdown" data-bs-auto-close="outside">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="filter-industry-btn" data-bs-toggle="dropdown" aria-expanded="false">
+              Industry {% if filters.industry %}<span class="badge bg-primary ms-1">{{ filters.industry|length }}</span>{% endif %}
+            </button>
+            <ul class="dropdown-menu px-3 py-2" style="max-height: 280px; overflow-y: auto; min-width: 200px;" aria-labelledby="filter-industry-btn">
+              {% for ind in industries %}
+              <li class="py-1">
+                <label class="d-flex align-items-center gap-2 small mb-0 cursor-pointer">
+                  <input type="checkbox" name="industry" value="{{ ind }}" {% if ind in filters.industry %}checked{% endif %} class="form-check-input">
+                  <span>{{ ind }}</span>
+                </label>
+              </li>
+              {% endfor %}
+              {% if not industries %}
+              <li class="small text-muted">No industries</li>
+              {% endif %}
+            </ul>
           </div>
-          {% endif %} {% if company.employee_count %}
-          <div class="text-muted small">
-            {{ company.employee_count }} employees
+        </div>
+        <div class="col-auto">
+          <label class="form-label mb-1 d-block">&nbsp;</label>
+          <div class="d-flex align-items-center gap-1">
+            <div class="dropdown">
+              <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="company-filters-dropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-filter"></i> Filters
+                {% if filters.pain_signal or filters.verified or filters.has_contact or filters.has_email or filters.has_linkedin %}
+                <span class="badge bg-primary ms-1">on</span>
+                {% endif %}
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end px-3 py-2" style="min-width: 240px;" aria-labelledby="company-filters-dropdown">
+                <li class="dropdown-header small text-muted">Boolean filters</li>
+                <li class="py-1">
+                  <span class="d-block small fw-medium">Pain Signal</span>
+                  <label class="me-2 small"><input type="radio" name="pain_signal" value="" {% if not filters.pain_signal %}checked{% endif %}> Any</label>
+                  <label class="me-2 small"><input type="radio" name="pain_signal" value="yes" {% if filters.pain_signal == 'yes' %}checked{% endif %}> <i class="fas fa-check text-success"></i> Yes</label>
+                  <label class="small"><input type="radio" name="pain_signal" value="no" {% if filters.pain_signal == 'no' %}checked{% endif %}> <i class="fas fa-times text-danger"></i> No</label>
+                </li>
+                <li class="py-1">
+                  <span class="d-block small fw-medium">Verified (contact)</span>
+                  <label class="me-2 small"><input type="radio" name="verified" value="" {% if not filters.verified %}checked{% endif %}> Any</label>
+                  <label class="me-2 small"><input type="radio" name="verified" value="yes" {% if filters.verified == 'yes' %}checked{% endif %}> <i class="fas fa-check text-success"></i> Yes</label>
+                  <label class="small"><input type="radio" name="verified" value="no" {% if filters.verified == 'no' %}checked{% endif %}> <i class="fas fa-times text-danger"></i> No</label>
+                </li>
+                <li class="py-1">
+                  <span class="d-block small fw-medium">Has contact</span>
+                  <label class="me-2 small"><input type="radio" name="has_contact" value="" {% if not filters.has_contact %}checked{% endif %}> Any</label>
+                  <label class="me-2 small"><input type="radio" name="has_contact" value="yes" {% if filters.has_contact == 'yes' %}checked{% endif %}> <i class="fas fa-check text-success"></i> Yes</label>
+                  <label class="small"><input type="radio" name="has_contact" value="no" {% if filters.has_contact == 'no' %}checked{% endif %}> <i class="fas fa-times text-danger"></i> No</label>
+                </li>
+                <li class="py-1">
+                  <span class="d-block small fw-medium">Has email (contact)</span>
+                  <label class="me-2 small"><input type="radio" name="has_email" value="" {% if not filters.has_email %}checked{% endif %}> Any</label>
+                  <label class="me-2 small"><input type="radio" name="has_email" value="yes" {% if filters.has_email == 'yes' %}checked{% endif %}> <i class="fas fa-check text-success"></i> Yes</label>
+                  <label class="small"><input type="radio" name="has_email" value="no" {% if filters.has_email == 'no' %}checked{% endif %}> <i class="fas fa-times text-danger"></i> No</label>
+                </li>
+                <li class="py-1">
+                  <span class="d-block small fw-medium">Has LinkedIn (contact)</span>
+                  <label class="me-2 small"><input type="radio" name="has_linkedin" value="" {% if not filters.has_linkedin %}checked{% endif %}> Any</label>
+                  <label class="me-2 small"><input type="radio" name="has_linkedin" value="yes" {% if filters.has_linkedin == 'yes' %}checked{% endif %}> <i class="fas fa-check text-success"></i> Yes</label>
+                  <label class="small"><input type="radio" name="has_linkedin" value="no" {% if filters.has_linkedin == 'no' %}checked{% endif %}> <i class="fas fa-times text-danger"></i> No</label>
+                </li>
+              </ul>
+            </div>
+            <a href="{% url 'crm:company_list' %}" class="btn btn-outline-secondary btn-sm px-2" title="Clear filters" aria-label="Clear filters">&times;</a>
           </div>
-          {% endif %}
         </div>
       </div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div class="p-4 text-center text-muted">
-      <i class="fas fa-building fa-2x mb-2"></i>
-      <p class="mb-0">No companies found</p>
-    </div>
-    {% endif %}
+    </form>
+    <form method="post" action="{% url 'crm:company_create' %}">
+      {% csrf_token %}
+      <div class="table-responsive">
+        <table class="table table-hover table-striped table-sm mb-0 small">
+          <thead class="table-light">
+            <tr>
+              <th class="pe-1" style="width: 2.5rem;">
+                <input type="checkbox" id="select-all-companies" class="form-check-input" title="Select all" aria-label="Select all">
+              </th>
+              <th>Company Name</th>
+              <th>Industry</th>
+              <th># Facilities</th>
+              <th>State(s)</th>
+              <th>Decision Maker Name</th>
+              <th>Title</th>
+              <th>LinkedIn URL</th>
+              <th>Company LinkedIn</th>
+              <th>Email</th>
+              <th>Pain Signal</th>
+              <th>Priority Tier</th>
+              <th>Source</th>
+              <th>Outreach Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for company in companies %}
+          <tr>
+            <td class="pe-1">
+              <input type="checkbox" class="form-check-input row-select-company" value="{{ company.pk }}" aria-label="Select {{ company.name }}">
+            </td>
+            <td class="fw-semibold editable-cell" data-editable data-entity="company" data-id="{{ company.pk }}" data-field="name" data-value="{{ company.name|default:'' }}" data-detail-url="{{ company.get_absolute_url }}">
+              <a href="{{ company.get_absolute_url }}" class="text-decoration-none">{{ company.name }}</a>
+            </td>
+            <td class="editable-cell" data-editable data-entity="company" data-id="{{ company.pk }}" data-field="industry" data-value="{{ company.industry|default:'' }}">{{ company.industry|default:"—" }}</td>
+            <td class="editable-cell" data-editable data-entity="company" data-id="{{ company.pk }}" data-field="facility_count" data-type="number" data-value="{{ company.facility_count|default:'' }}">{{ company.facility_count|default:"—" }}</td>
+            <td>
+              {% with areas=company.operating_areas.all %}
+                {% if areas %}{% for area in areas %}{{ area.value }}{% if not forloop.last %}, {% endif %}{% endfor %}{% else %}—{% endif %}
+              {% endwith %}
+            </td>
+            <td>
+              {% with contacts=company.contacts.all %}
+                {% if contacts %}
+                  {% with dm=contacts.0 %}
+                    <a href="{{ dm.get_absolute_url }}" class="text-decoration-none">{{ dm.full_name|default:"—" }}</a>
+                  {% endwith %}
+                {% else %}—
+                {% endif %}
+              {% endwith %}
+            </td>
+            <td>
+              {% with contacts=company.contacts.all %}
+                {% if contacts %}{{ contacts.0.job_title|default:"—" }}{% else %}—{% endif %}
+              {% endwith %}
+            </td>
+            <td>
+              {% with contacts=company.contacts.all %}
+                {% if contacts and contacts.0.linkedin %}
+                  <a href="{{ contacts.0.linkedin }}" target="_blank" rel="noopener noreferrer" title="{{ contacts.0.linkedin }}"><i class="fab fa-linkedin"></i></a>
+                {% else %}—
+                {% endif %}
+              {% endwith %}
+            </td>
+            <td class="editable-cell" data-editable data-entity="company" data-id="{{ company.pk }}" data-field="linkedin_url" data-type="url" data-value="{{ company.linkedin_url|default:'' }}">
+              {% if company.linkedin_url %}
+                <a href="{{ company.linkedin_url }}" target="_blank" rel="noopener noreferrer" title="{{ company.linkedin_url }}"><i class="fab fa-linkedin"></i></a>
+              {% else %}—
+              {% endif %}
+            </td>
+            <td>
+              {% with contacts=company.contacts.all %}
+                {% if contacts and contacts.0.email %}
+                  <a href="mailto:{{ contacts.0.email }}">{{ contacts.0.email }}</a>
+                {% else %}—
+                {% endif %}
+              {% endwith %}
+            </td>
+            <td>
+              {% with signals=company.pain_signals.all %}
+                {% if signals %}
+                  {% with latest=signals.0 %}
+                    {% with types=latest.pain_types.all %}
+                      {% if types %}
+                        <span title="{{ latest.pain_signal|default:'' }}">{% for t in types %}{{ t.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>{% if latest.url %} <a href="{{ latest.url }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none">↗</a>{% endif %}
+                      {% elif latest.pain_signal %}
+                        <span title="{{ latest.pain_signal }}">{{ latest.pain_signal|truncatewords:12 }}</span>{% if latest.url %} <a href="{{ latest.url }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none">↗</a>{% endif %}
+                      {% else %}
+                        {% if latest.url %}<a href="{{ latest.url }}" target="_blank" rel="noopener noreferrer">{{ latest.get_signal_type_display }}</a>{% else %}{{ latest.get_signal_type_display }}{% endif %}
+                      {% endif %}
+                    {% endwith %}
+                  {% endwith %}
+                {% else %}—
+                {% endif %}
+              {% endwith %}
+            </td>
+            <td class="editable-cell" data-editable data-entity="company" data-id="{{ company.pk }}" data-field="priority_tier" data-type="select" data-value="{{ company.priority_tier|default:'' }}">
+              {% if company.priority_tier %}Tier {{ company.priority_tier }}{% else %}—{% endif %}
+            </td>
+            <td>
+              {% with contacts=company.contacts.all %}
+                {% if contacts %}{{ contacts.0.source|default:"—" }}{% else %}—{% endif %}
+              {% endwith %}
+            </td>
+            <td>
+              {% with contacts=company.contacts.all %}
+                {% if contacts %}
+                  <span class="badge bg-secondary">{{ contacts.0.get_outreach_status_display }}</span>
+                {% else %}—
+                {% endif %}
+              {% endwith %}
+            </td>
+            <td>
+              <a href="{% url 'crm:company_edit' company.pk %}" class="btn btn-sm btn-link text-decoration-none">Edit</a>
+            </td>
+          </tr>
+          {% endfor %}
+            <!-- Quick add row (hidden by default) -->
+            <tr id="quick-add-row" class="table-success" style="display: none;">
+              <td class="pe-1"></td>
+              <td>
+                <input type="text" name="name" class="form-control form-control-sm" placeholder="Company name" required />
+              </td>
+              <td>
+                <input type="text" name="industry" class="form-control form-control-sm" placeholder="Industry" />
+              </td>
+              <td>
+                <input type="number" name="facility_count" class="form-control form-control-sm" placeholder="#" min="0" />
+              </td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td>
+                <input type="url" name="linkedin_url" class="form-control form-control-sm" placeholder="Company LinkedIn" />
+              </td>
+              <td></td>
+              <td></td>
+              <td>
+                <select name="priority_tier" class="form-select form-select-sm">
+                  <option value="">—</option>
+                  <option value="1">Tier 1</option>
+                  <option value="2">Tier 2</option>
+                  <option value="3">Tier 3</option>
+                </select>
+              </td>
+              <td></td>
+              <td></td>
+              <td>
+                <button type="submit" class="btn btn-sm btn-primary">Add</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="p-2 text-center border-top">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <form method="get" class="d-flex align-items-center gap-2">
+            {% for key, value in request.GET.items %}
+              {% if key != 'page_size' and key != 'page' %}
+                <input type="hidden" name="{{ key }}" value="{{ value }}">
+              {% endif %}
+            {% endfor %}
+            <label class="small mb-0">
+              Rows per page:
+              <select name="page_size" class="form-select form-select-sm d-inline-block w-auto" onchange="this.form.submit()">
+                {% for size in page_size_options %}
+                  <option value="{{ size }}" {% if size == page_size %}selected{% endif %}>{{ size }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </form>
+          <div>
+            <button type="button" id="add-row-btn" class="btn btn-sm btn-outline-primary me-2">
+              <i class="fas fa-plus"></i> Add row
+            </button>
+            {% if page_obj %}
+            <nav aria-label="Companies pagination" class="d-inline-block">
+              <ul class="pagination pagination-sm mb-0">
+                {% if page_obj.has_previous %}
+                  <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}&page_size={{ page_size }}{% if request.GET.urlencode %}&{{ request.GET.urlencode }}{% endif %}">&laquo;</a>
+                  </li>
+                {% else %}
+                  <li class="page-item disabled"><span class="page-link">&laquo;</span></li>
+                {% endif %}
+                {% for num in page_obj.paginator.page_range %}
+                  {% if num == page_obj.number %}
+                    <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                  {% elif num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
+                    <li class="page-item">
+                      <a class="page-link" href="?page={{ num }}&page_size={{ page_size }}{% if request.GET.urlencode %}&{{ request.GET.urlencode }}{% endif %}">{{ num }}</a>
+                    </li>
+                  {% endif %}
+                {% endfor %}
+                {% if page_obj.has_next %}
+                  <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}&page_size={{ page_size }}{% if request.GET.urlencode %}&{{ request.GET.urlencode }}{% endif %}">&raquo;</a>
+                  </li>
+                {% else %}
+                  <li class="page-item disabled"><span class="page-link">&raquo;</span></li>
+                {% endif %}
+              </ul>
+            </nav>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </form>
   </div>
 </div>
+
+<style>
+  .table td.editable-cell[data-editable] { cursor: pointer; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-submit filter form: on change for selects/inputs, on dropdown close for Industry and Filters
+    var filterForm = document.getElementById('company-filter-form');
+    if (filterForm) {
+        var debounceTimer;
+        function submitFilters() { filterForm.submit(); }
+        ['filter-pain-type', 'filter-priority', 'filter-outreach'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.addEventListener('change', submitFilters);
+        });
+        filterForm.querySelectorAll('input[name="facilities_min"], input[name="facilities_max"]').forEach(function(input) {
+            input.addEventListener('change', submitFilters);
+            input.addEventListener('input', function() {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(submitFilters, 350);
+            });
+        });
+        ['filter-industry-btn', 'company-filters-dropdown'].forEach(function(btnId) {
+            var btn = document.getElementById(btnId);
+            if (btn) {
+                var dropdownEl = btn.closest('.dropdown');
+                if (dropdownEl) dropdownEl.addEventListener('hidden.bs.dropdown', submitFilters);
+            }
+        });
+    }
+
+    const addRowBtn = document.getElementById('add-row-btn');
+    const quickAddRow = document.getElementById('quick-add-row');
+    if (addRowBtn && quickAddRow) {
+        addRowBtn.addEventListener('click', function() {
+            quickAddRow.style.display = '';
+            var firstInput = quickAddRow.querySelector('input');
+            if (firstInput) firstInput.focus();
+        });
+    }
+
+    var selectAll = document.getElementById('select-all-companies');
+    var rowCheckboxes = document.querySelectorAll('.row-select-company');
+    var bulkBar = document.getElementById('bulk-actions-bar');
+    var bulkCount = document.getElementById('bulk-selected-count');
+    var bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+    var bulkForm = document.getElementById('bulk-delete-form');
+
+    function updateBulkUI() {
+        var checked = document.querySelectorAll('.row-select-company:checked');
+        var n = checked.length;
+        if (n > 0) {
+            bulkBar.style.setProperty('display', 'flex', 'important');
+            bulkCount.textContent = n;
+        } else {
+            bulkBar.style.display = 'none';
+            if (selectAll) selectAll.checked = false;
+        }
+    }
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function() {
+            rowCheckboxes.forEach(function(cb) { cb.checked = selectAll.checked; });
+            updateBulkUI();
+        });
+    }
+    rowCheckboxes.forEach(function(cb) {
+        cb.addEventListener('change', updateBulkUI);
+    });
+
+    if (bulkDeleteBtn && bulkForm) {
+        bulkDeleteBtn.addEventListener('click', function() {
+            var ids = Array.from(document.querySelectorAll('.row-select-company:checked')).map(function(cb) { return cb.value; });
+            if (ids.length === 0) return;
+            bulkForm.innerHTML = '';
+            var csrf = document.querySelector('[name=csrfmiddlewaretoken]');
+            if (csrf) {
+                var c = document.createElement('input');
+                c.type = 'hidden';
+                c.name = 'csrfmiddlewaretoken';
+                c.value = csrf.value;
+                bulkForm.appendChild(c);
+            }
+            ids.forEach(function(id) {
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'ids';
+                input.value = id;
+                bulkForm.appendChild(input);
+            });
+            bulkForm.submit();
+        });
+    }
+});
+</script>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'crm/inline-edit.js' %}"></script>
 {% endblock %}

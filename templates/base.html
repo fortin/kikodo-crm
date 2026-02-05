@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+{% load static %}
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -183,13 +184,15 @@
         border-bottom: 1px solid var(--airtable-gray-200);
         font-weight: 600;
         color: var(--airtable-gray-700);
-        padding: 12px 16px;
+        padding: 8px 10px;
+        font-size: 13px;
       }
 
       .table tbody td {
-        padding: 12px 16px;
+        padding: 6px 10px;
         border-bottom: 1px solid var(--airtable-gray-200);
         vertical-align: middle;
+        font-size: 13px;
       }
 
       .table tbody tr:hover {
@@ -338,7 +341,7 @@
           <div class="position-sticky pt-3">
             <div class="text-center mb-4 px-3">
               <a href="{% url 'crm:dashboard' %}" class="logo">
-                <i class="fas fa-rocket"></i> Kikodo CRM
+                <img src="{% static 'images/logo_square_blue.png' %}" alt="Kikodo CRM" class="img-fluid" style="height: 32px;"> Kikodo CRM
               </a>
             </div>
 
@@ -385,6 +388,22 @@
               </li>
               <li class="nav-item">
                 <a
+                  class="nav-link {% if 'signal' in request.resolver_match.url_name %}active{% endif %}"
+                  href="{% url 'crm:signal_list' %}"
+                >
+                  <i class="fas fa-satellite-dish"></i> Signals
+                </a>
+              </li>
+              <li class="nav-item">
+                <a
+                  class="nav-link {% if 'sequence' in request.resolver_match.url_name %}active{% endif %}"
+                  href="{% url 'crm:sequence_list' %}"
+                >
+                  <i class="fas fa-stream"></i> Sequences
+                </a>
+              </li>
+              <li class="nav-item">
+                <a
                   class="nav-link {% if 'analytics' in request.resolver_match.url_name %}active{% endif %}"
                   href="{% url 'analytics:dashboard' %}"
                 >
@@ -399,16 +418,8 @@
                   <i class="fas fa-file-alt"></i> Reports
                 </a>
               </li>
-          <li class="nav-item">
-            <a
-              class="nav-link {% if 'base' in request.resolver_match.url_name %}active{% endif %}"
-              href="{% url 'analytics:bases' %}"
-            >
-              <i class="fas fa-database"></i> Bases
-            </a>
-          </li>
               <li class="nav-item mt-4">
-                <a class="nav-link" href="{% url 'admin:index' %}">
+                <a class="nav-link" href="{% url 'admin:index' %}" target="_blank">
                   <i class="fas fa-cog"></i> Admin
                 </a>
               </li>

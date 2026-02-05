@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}{% if is_create %}Add Signal - Kikodo CRM{% else %}Edit Signal - Kikodo CRM{% endif %}{% endblock %}
+{% block page_title %}{% if is_create %}Add Signal from URL{% else %}Edit Signal{% endif %}{% endblock %}
+
+{% block page_actions %}
+{% if not is_create and signal %}
+<a href="{% url 'crm:signal_detail' signal.pk %}" class="btn btn-outline-secondary me-2">
+  <i class="fas fa-eye"></i> View
+</a>
+{% endif %}
+<a href="{% url 'crm:signal_list' %}" class="btn btn-outline-secondary">
+  <i class="fas fa-list"></i> Back to list
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    {% if is_create %}
+    <p class="text-muted small mb-3">
+      Paste a URL below. The system will fetch the page content and use Ollama (local LLM) to populate headline, summary, relevance, and other fields. Ensure Ollama is running (e.g. <code>ollama serve</code>) and a model is available (e.g. <code>ollama pull llama3.2</code>).
+    </p>
+    <form method="post" action="{% url 'crm:signal_create' %}">
+      {% csrf_token %}
+      {{ form|crispy }}
+      <button type="submit" class="btn btn-primary">
+        <i class="fas fa-magic"></i> Fetch URL &amp; Populate with LLM
+      </button>
+      <a href="{% url 'crm:signal_list' %}" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+    {% else %}
+    <form method="post" action="{% url 'crm:signal_edit' signal.pk %}">
+      {% csrf_token %}
+      {{ form|crispy }}
+      <button type="submit" class="btn btn-primary">Save</button>
+      <a href="{% url 'crm:signal_detail' signal.pk %}" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

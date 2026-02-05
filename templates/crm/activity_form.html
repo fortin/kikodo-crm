@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ page_title|default:"Log Activity" }} - Kikodo CRM{% endblock %}
+{% block page_title %}{{ page_title|default:"Log Activity" }}{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <form method="post">
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Type</label>
+          {{ form.activity_type }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Contact</label>
+          <select name="contact" class="form-select" id="contact-select">
+            <option value="">---------</option>
+            {% for c in contacts %}
+            <option value="{{ c.id }}" data-company="{{ c.company_id|default_if_none:'' }}" {% if form.instance.contact and form.instance.contact.id == c.id %}selected{% endif %}>
+              {{ c.full_name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Company</label>
+          <select name="company" class="form-select" id="company-select">
+            <option value="">---------</option>
+            {% for co in companies %}
+            <option value="{{ co.id }}" {% if form.instance.company and form.instance.company.id == co.id %}selected{% endif %}>
+              {{ co.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Subject</label>
+          {{ form.subject }}
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Link</label>
+          {{ form.link }}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Status</label>
+          {{ form.status }}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">When</label>
+          {{ form.due_date }}
+        </div>
+        <div class="col-12">
+          <label class="form-label">Message / Notes</label>
+          {{ form.description }}
+        </div>
+        <div class="col-12">
+          <label class="form-label">Outcome / Reply</label>
+          {{ form.outcome }}
+        </div>
+      </div>
+
+      <div class="mt-4 d-flex justify-content-end">
+        <a href="{% url 'crm:activity_list' %}" class="btn btn-secondary me-2">Cancel</a>
+        <button type="submit" class="btn btn-primary">Save Activity</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function() {
+    const contactSelect = document.getElementById("contact-select");
+    const companySelect = document.getElementById("company-select");
+
+    if (contactSelect && companySelect) {
+      contactSelect.addEventListener("change", () => {
+        const selected = contactSelect.options[contactSelect.selectedIndex];
+        const companyId = selected ? selected.getAttribute("data-company") : "";
+        if (companyId) {
+          companySelect.value = companyId;
+        }
+      });
+    }
+  })();
+</script>
+{% endblock %}
+

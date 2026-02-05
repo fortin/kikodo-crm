@@ -1,0 +1,251 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ contact.full_name }} - Contact - Kikodo CRM{% endblock %}
+{% block page_title %}Contact: {{ contact.full_name }}{% endblock %}
+
+{% block page_actions %}
+<a href="{% url 'crm:contact_edit' contact.pk %}" class="btn btn-outline-primary me-2">
+  <i class="fas fa-edit"></i> Edit
+</a>
+<a href="{% url 'crm:contact_enroll_sequence' contact.pk %}" class="btn btn-outline-primary me-2">
+  <i class="fas fa-stream"></i> Enroll in sequence
+</a>
+<a href="{% url 'crm:activity_create' %}?contact={{ contact.pk }}" class="btn btn-primary">
+  <i class="fas fa-plus"></i> Log Activity
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-md-4">
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title mb-2">{{ contact.full_name }}</h5>
+        {% if contact.job_title or contact.company %}
+        <p class="mb-1">
+          {% if contact.job_title %}<span class="fw-semibold">{{ contact.job_title }}</span>{% endif %}
+          {% if contact.company %}
+          <br />
+          at
+          <a href="{{ contact.company.get_absolute_url }}">{{ contact.company.name }}</a>
+          {% endif %}
+        </p>
+        {% endif %}
+
+        <div class="mt-2 small text-muted">
+          {% if contact.email %}
+          <div><i class="fas fa-envelope me-1"></i> <a href="mailto:{{ contact.email }}">{{ contact.email }}</a></div>
+          {% endif %}
+          {% if contact.phone %}
+          <div><i class="fas fa-phone me-1"></i> {{ contact.phone }}</div>
+          {% endif %}
+          {% if contact.mobile %}
+          <div><i class="fas fa-mobile-alt me-1"></i> {{ contact.mobile }}</div>
+          {% endif %}
+          {% if contact.linkedin %}
+          <div>
+            <i class="fab fa-linkedin me-1"></i>
+            <a href="{{ contact.linkedin }}" target="_blank" rel="noopener noreferrer">LinkedIn profile</a>
+          </div>
+          {% endif %}
+        </div>
+
+        <hr />
+        <div class="small">
+          <div class="fw-semibold mb-1">Communication preferences</div>
+          <div>
+            <span class="status-indicator {% if contact.can_email_outbound %}status-active{% else %}status-inactive{% endif %}"></span>
+            Emails (1:1 &amp; sequences)
+          </div>
+          <div>
+            <span class="status-indicator {% if contact.can_marketing_email %}status-active{% else %}status-inactive{% endif %}"></span>
+            Marketing emails
+          </div>
+          <div>
+            <span class="status-indicator {% if contact.can_call %}status-active{% else %}status-inactive{% endif %}"></span>
+            Calls
+          </div>
+          <div>
+            <span class="status-indicator {% if contact.can_linkedin %}status-active{% else %}status-inactive{% endif %}"></span>
+            LinkedIn / social
+          </div>
+        </div>
+
+        {% if contact.last_contact %}
+        <hr />
+        <div class="small text-muted">
+          Last contact: {{ contact.last_contact|date:"Y-m-d H:i" }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if enrollments %}
+    <div class="card mb-3">
+      <div class="card-header">Sequences</div>
+      <div class="card-body p-0">
+        <div class="data-grid">
+          {% for enrollment in enrollments %}
+          <div class="data-grid-row">
+            <div class="flex-grow-1">
+              <div class="fw-semibold">{{ enrollment.sequence.name }}</div>
+              <div class="small text-muted">
+                Status: {{ enrollment.get_status_display }}
+                {% if enrollment.next_run_at %}
+                  · Next step {{ enrollment.next_run_at|date:"Y-m-d H:i" }}
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if upcoming_activities %}
+    <div class="card mb-3">
+      <div class="card-header">Upcoming activities</div>
+      <div class="card-body p-0">
+        <div class="data-grid">
+          {% for activity in upcoming_activities %}
+          <div class="data-grid-row">
+            <div class="flex-grow-1">
+              <div class="fw-semibold">{{ activity.subject }}</div>
+              <div class="small text-muted">
+                {{ activity.get_activity_type_display }} · Due {{ activity.due_date|date:"Y-m-d H:i" }}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if audit_logs %}
+    <div class="card mb-3">
+      <div class="card-header">History</div>
+      <div class="card-body p-0">
+        <ul class="list-group list-group-flush small">
+          {% for entry in audit_logs %}
+          <li class="list-group-item d-flex justify-content-between">
+            <span>{{ entry.get_action_display }} · {{ entry.timestamp|date:"M d, Y H:i" }}</span>
+            {% if entry.user %}<span class="text-muted">{{ entry.user.get_full_name|default:entry.user.username }}</span>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if custom_fields_data %}
+    <div class="card mb-3">
+      <div class="card-header">Custom fields</div>
+      <div class="card-body small">
+        {% for cf, value in custom_fields_data %}
+        <div class="mb-2">
+          <span class="text-muted">{{ cf.label }}:</span>
+          <span>{% if value %}{{ value }}{% else %}—{% endif %}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="col-md-8">
+    <div class="card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Activity timeline</span>
+        <div class="small">
+          <span class="me-1">Filter:</span>
+          <a href="?type=" class="me-1 {% if not active_type_filter %}fw-semibold{% endif %}">All</a>
+          {% for key, label in Activity.ACTIVITY_TYPES %}
+          <a href="?type={{ key }}" class="me-1 {% if active_type_filter == key %}fw-semibold{% endif %}">{{ label }}</a>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="card-body p-0">
+        {% if pinned_activities %}
+        <div class="data-grid-header">Pinned</div>
+        <div class="data-grid">
+          {% for activity in pinned_activities %}
+          <div class="data-grid-row">
+            <div class="me-3">
+              <span class="badge bg-primary">{{ activity.get_activity_type_display }}</span>
+            </div>
+            <div class="flex-grow-1">
+              <div class="fw-semibold">{{ activity.subject }}</div>
+              <div class="small text-muted">
+                {{ activity.created_at|date:"Y-m-d H:i" }}
+                {% if activity.sequence_enrollment %}
+                  · In sequence {{ activity.sequence_enrollment.sequence.name }}
+                {% endif %}
+              </div>
+              {% if activity.description %}
+              <div class="small mt-1">{{ activity.description|linebreaksbr }}</div>
+              {% endif %}
+              {% if activity.thread %}
+              <div class="small text-muted mt-1">
+                Thread: {{ activity.thread.subject|default:"(no subject)" }}
+              </div>
+              {% endif %}
+            </div>
+            <div class="text-end small me-1">
+              <span class="badge bg-info">{{ activity.get_status_display }}</span>
+              {% if activity.due_date %}
+              <div class="text-muted">{{ activity.due_date|date:"M d, Y" }}</div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="data-grid-header">All activities</div>
+        <div class="data-grid">
+          {% if activities %}
+          {% for activity in activities %}
+          <div class="data-grid-row">
+            <div class="me-3">
+              <span class="badge bg-primary">{{ activity.get_activity_type_display }}</span>
+            </div>
+            <div class="flex-grow-1">
+              <div class="fw-semibold">{{ activity.subject }}</div>
+              <div class="small text-muted">
+                {{ activity.created_at|date:"Y-m-d H:i" }}
+                {% if activity.sequence_enrollment %}
+                  · In sequence {{ activity.sequence_enrollment.sequence.name }}
+                {% endif %}
+              </div>
+              {% if activity.description %}
+              <div class="small mt-1">{{ activity.description|linebreaksbr }}</div>
+              {% endif %}
+              {% if activity.link %}
+              <div class="small mt-1">
+                <a href="{{ activity.link }}" target="_blank" rel="noopener noreferrer">Open related link</a>
+              </div>
+              {% endif %}
+            </div>
+            <div class="text-end small me-1">
+              <span class="badge bg-info">{{ activity.get_status_display }}</span>
+              {% if activity.due_date %}
+              <div class="text-muted">{{ activity.due_date|date:"M d, Y" }}</div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+          {% else %}
+          <div class="p-4 text-center text-muted">
+            <i class="fas fa-tasks fa-2x mb-2"></i>
+            <p class="mb-0">No activities logged yet</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

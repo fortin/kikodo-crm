@@ -1,44 +1,247 @@
-{% extends 'base.html' %} {% block title %}Activities - Kikodo CRM{% endblock %}
-{% block page_title %}Activities{% endblock %} {% block page_actions %}
-<button class="btn btn-primary">
-  <i class="fas fa-plus"></i> Add Activity
-</button>
-{% endblock %} {% block content %}
+{% extends 'base.html' %}
+
+{% block title %}Activities - Kikodo CRM{% endblock %}
+{% block page_title %}Activities{% endblock %}
+
+{% block page_actions %}
+<a href="{% url 'crm:activity_export_csv' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-success me-2">
+  <i class="fas fa-download"></i> Export CSV
+</a>
+<a href="{% url 'crm:activity_create' %}" class="btn btn-primary">
+  <i class="fas fa-plus"></i> Log Activity
+</a>
+{% endblock %}
+
+{% block content %}
 <div class="card">
   <div class="card-body p-0">
-    {% if activities %}
-    <div class="data-grid">
-      {% for activity in activities %}
-      <div class="data-grid-row">
-        <div class="me-3">
-          <span class="badge bg-primary"
-            >{{ activity.get_activity_type_display }}</span
-          >
-        </div>
-        <div class="flex-grow-1">
-          <div class="fw-semibold">{{ activity.subject }}</div>
-          <div class="text-muted small">
-            {% if activity.contact %} {{ activity.contact.full_name }} {% elif
-            activity.company %} {{ activity.company.name }} {% endif %}
+    <form method="post" action="{% url 'crm:activity_create' %}">
+      {% csrf_token %}
+      <div class="table-responsive">
+        <table class="table table-hover table-striped table-sm mb-0 small">
+          <thead class="table-light">
+            <tr>
+              <th>
+                <a href="?sort=activity_type&order={% if sort_by == 'activity_type' %}{{ next_order }}{% else %}desc{% endif %}" class="text-decoration-none text-dark">
+                  Type
+                  {% if sort_by == 'activity_type' %}
+                    <i class="fas fa-sort-{% if sort_order == 'desc' %}down{% else %}up{% endif %}"></i>
+                  {% else %}
+                    <i class="fas fa-sort text-muted"></i>
+                  {% endif %}
+                </a>
+              </th>
+              <th>
+                <a href="?sort=subject&order={% if sort_by == 'subject' %}{{ next_order }}{% else %}desc{% endif %}" class="text-decoration-none text-dark">
+                  Subject
+                  {% if sort_by == 'subject' %}
+                    <i class="fas fa-sort-{% if sort_order == 'desc' %}down{% else %}up{% endif %}"></i>
+                  {% else %}
+                    <i class="fas fa-sort text-muted"></i>
+                  {% endif %}
+                </a>
+              </th>
+              <th>
+                <a href="?sort=contact&order={% if sort_by == 'contact' %}{{ next_order }}{% else %}desc{% endif %}" class="text-decoration-none text-dark">
+                  Contact
+                  {% if sort_by == 'contact' %}
+                    <i class="fas fa-sort-{% if sort_order == 'desc' %}down{% else %}up{% endif %}"></i>
+                  {% else %}
+                    <i class="fas fa-sort text-muted"></i>
+                  {% endif %}
+                </a>
+              </th>
+              <th>
+                <a href="?sort=company&order={% if sort_by == 'company' %}{{ next_order }}{% else %}desc{% endif %}" class="text-decoration-none text-dark">
+                  Company
+                  {% if sort_by == 'company' %}
+                    <i class="fas fa-sort-{% if sort_order == 'desc' %}down{% else %}up{% endif %}"></i>
+                  {% else %}
+                    <i class="fas fa-sort text-muted"></i>
+                  {% endif %}
+                </a>
+              </th>
+              <th>
+                <a href="?sort=due_date&order={% if sort_by == 'due_date' %}{{ next_order }}{% else %}desc{% endif %}" class="text-decoration-none text-dark">
+                  Due date
+                  {% if sort_by == 'due_date' %}
+                    <i class="fas fa-sort-{% if sort_order == 'desc' %}down{% else %}up{% endif %}"></i>
+                  {% else %}
+                    <i class="fas fa-sort text-muted"></i>
+                  {% endif %}
+                </a>
+              </th>
+              <th>
+                <a href="?sort=status&order={% if sort_by == 'status' %}{{ next_order }}{% else %}desc{% endif %}" class="text-decoration-none text-dark">
+                  Status
+                  {% if sort_by == 'status' %}
+                    <i class="fas fa-sort-{% if sort_order == 'desc' %}down{% else %}up{% endif %}"></i>
+                  {% else %}
+                    <i class="fas fa-sort text-muted"></i>
+                  {% endif %}
+                </a>
+              </th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for activity in activities %}
+            <tr>
+              <td>
+                <span class="badge bg-primary">
+                  {{ activity.get_activity_type_display }}
+                </span>
+              </td>
+              <td class="fw-semibold">
+                {{ activity.subject }}
+                {% if activity.thread %}
+                  <div class="small text-muted">
+                    Thread: {{ activity.thread.subject|default:"(no subject)" }}
+                  </div>
+                {% endif %}
+              </td>
+              <td>
+                {% if activity.contact %}
+                  {{ activity.contact.full_name }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>
+                {% if activity.company %}
+                  {{ activity.company.name }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>
+                {% if activity.due_date %}
+                  {{ activity.due_date|date:"Y-m-d H:i" }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge bg-info">
+                  {{ activity.get_status_display }}
+                </span>
+              </td>
+              <td class="text-end">
+                {% if activity.link %}
+                <a
+                  href="{{ activity.link }}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="btn btn-sm btn-link text-decoration-none"
+                >
+                  Open
+                </a>
+                {% endif %}
+                <a
+                  href="{% url 'crm:activity_edit' activity.pk %}"
+                  class="btn btn-sm btn-link text-decoration-none"
+                >
+                  Edit
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+            <!-- Quick add row (hidden by default) -->
+            <tr id="quick-add-row" class="table-success" style="display: none;">
+              <td>
+                <input type="hidden" name="activity_type" value="email" />
+                <span class="badge bg-primary">Email</span>
+              </td>
+              <td>
+                <input
+                  type="text"
+                  name="subject"
+                  class="form-control form-control-sm"
+                  placeholder="Quick log subject"
+                  required
+                />
+              </td>
+              <td><!-- contact can be set later in full form --></td>
+              <td><!-- company can be set later in full form --></td>
+              <td><!-- due_date defaults to now in view --></td>
+              <td><!-- status defaults to Pending --></td>
+              <td class="text-end">
+                <button type="submit" class="btn btn-sm btn-primary">
+                  Add
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="p-2 text-center border-top">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <form method="get" class="d-flex align-items-center gap-2">
+            {% for key, value in request.GET.items %}
+              {% if key != 'page_size' and key != 'page' %}
+                <input type="hidden" name="{{ key }}" value="{{ value }}">
+              {% endif %}
+            {% endfor %}
+            <label class="small mb-0">
+              Rows per page:
+              <select name="page_size" class="form-select form-select-sm d-inline-block w-auto" onchange="this.form.submit()">
+                {% for size in page_size_options %}
+                  <option value="{{ size }}" {% if size == page_size %}selected{% endif %}>{{ size }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </form>
+          <div>
+            <button type="button" id="add-row-btn" class="btn btn-sm btn-outline-primary me-2">
+              <i class="fas fa-plus"></i> Add row
+            </button>
+            {% if page_obj %}
+            <nav aria-label="Activities pagination" class="d-inline-block">
+              <ul class="pagination pagination-sm mb-0">
+                {% if page_obj.has_previous %}
+                  <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}&page_size={{ page_size }}{% if request.GET.urlencode %}&{{ request.GET.urlencode }}{% endif %}">&laquo;</a>
+                  </li>
+                {% else %}
+                  <li class="page-item disabled"><span class="page-link">&laquo;</span></li>
+                {% endif %}
+                {% for num in page_obj.paginator.page_range %}
+                  {% if num == page_obj.number %}
+                    <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                  {% elif num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
+                    <li class="page-item">
+                      <a class="page-link" href="?page={{ num }}&page_size={{ page_size }}{% if request.GET.urlencode %}&{{ request.GET.urlencode }}{% endif %}">{{ num }}</a>
+                    </li>
+                  {% endif %}
+                {% endfor %}
+                {% if page_obj.has_next %}
+                  <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}&page_size={{ page_size }}{% if request.GET.urlencode %}&{{ request.GET.urlencode }}{% endif %}">&raquo;</a>
+                  </li>
+                {% else %}
+                  <li class="page-item disabled"><span class="page-link">&raquo;</span></li>
+                {% endif %}
+              </ul>
+            </nav>
+            {% endif %}
           </div>
-        </div>
-        <div class="text-end">
-          <span class="badge bg-info">{{ activity.get_status_display }}</span>
-          {% if activity.due_date %}
-          <div class="text-muted small">
-            {{ activity.due_date|date:"M d, Y" }}
-          </div>
-          {% endif %}
         </div>
       </div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div class="p-4 text-center text-muted">
-      <i class="fas fa-tasks fa-2x mb-2"></i>
-      <p class="mb-0">No activities found</p>
-    </div>
-    {% endif %}
+    </form>
   </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const addRowBtn = document.getElementById('add-row-btn');
+    const quickAddRow = document.getElementById('quick-add-row');
+
+    if (addRowBtn && quickAddRow) {
+        addRowBtn.addEventListener('click', function() {
+            quickAddRow.style.display = '';
+            quickAddRow.querySelector('input[type="text"]').focus();
+        });
+    }
+});
+</script>
 {% endblock %}

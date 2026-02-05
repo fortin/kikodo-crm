@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+
+{% block title %}Enroll {{ contact.full_name }} in a sequence - Kikodo CRM{% endblock %}
+{% block page_title %}Enroll in sequence{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <p class="text-muted mb-3">
+      Choose a sequence to enroll <strong>{{ contact.full_name }}</strong> in. The first step will be scheduled according to the sequence.
+    </p>
+    <form method="post">
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+      <div class="mb-3">
+        <label for="{{ form.sequence.id_for_label }}" class="form-label">Sequence</label>
+        {{ form.sequence }}
+        {{ form.sequence.errors }}
+      </div>
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Enroll</button>
+        <a href="{% url 'crm:contact_detail' contact.pk %}" class="btn btn-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

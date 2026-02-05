@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+{% block title %}Unsubscribe - Kikodo CRM{% endblock %}
+{% block page_title %}Email preferences{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body text-center">
+    {% if success %}
+    <p class="mb-0">You have been unsubscribed from one-to-one and sequence emails.</p>
+    {% else %}
+    <p class="mb-0 text-danger">{{ error|default:"This link is invalid or has expired." }}</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

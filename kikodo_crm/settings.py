@@ -69,6 +69,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "crm.audit.AuditMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -174,6 +175,12 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "user": "100/hour",
+    },
 }
 
 # CORS settings
@@ -193,8 +200,14 @@ LOGIN_URL = "/admin/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
 
-# Email settings (for development)
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# Email settings (for development and sequence sending)
+EMAIL_BACKEND = config(
+    "EMAIL_BACKEND",
+    default="django.core.mail.backends.console.EmailBackend",
+)
+DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="noreply@example.com")
+# Base URL for unsubscribe links in sequence emails (e.g. https://app.example.com)
+SITE_URL = config("SITE_URL", default="")
 
 # Celery Configuration (for background tasks)
 CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/0")
@@ -209,6 +222,10 @@ CACHES = {
         "LOCATION": config("REDIS_URL", default="redis://localhost:6379/1"),
     }
 }
+
+# Signals: LLM (Ollama) for URL → spreadsheet population
+OLLAMA_BASE_URL = config("OLLAMA_BASE_URL", default="http://localhost:11434")
+OLLAMA_MODEL = config("OLLAMA_MODEL", default="qwen3-coder:30b")
 
 # Security settings
 SECURE_BROWSER_XSS_FILTER = True

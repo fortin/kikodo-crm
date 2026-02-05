@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ deal.name }} - Deal - Kikodo CRM{% endblock %}
+{% block page_title %}Deal: {{ deal.name }}{% endblock %}
+
+{% block page_actions %}
+<a href="{% url 'crm:deal_edit' deal.pk %}" class="btn btn-outline-primary me-2">
+  <i class="fas fa-edit"></i> Edit
+</a>
+<a href="{% url 'crm:activity_create' %}?deal={{ deal.pk }}" class="btn btn-primary">
+  <i class="fas fa-plus"></i> Log Activity
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-md-4">
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title mb-2">{{ deal.name }}</h5>
+        <p class="mb-2">
+          <span class="badge bg-info">{{ deal.stage_display }}</span>
+          {% if deal.pipeline %}<span class="text-muted small ms-1">{{ deal.pipeline.name }}</span>{% endif %}
+        </p>
+        <div class="mb-2">
+          <span class="fw-semibold">${{ deal.amount|floatformat:0 }}</span>
+          <span class="text-muted small">({{ deal.probability }}% · weighted ${{ deal.weighted_amount|floatformat:0 }})</span>
+        </div>
+        <div class="small text-muted">
+          Expected close: {{ deal.expected_close_date|date:"M d, Y" }}
+          {% if deal.actual_close_date %}<br />Closed: {{ deal.actual_close_date|date:"M d, Y" }}{% endif %}
+          {% if deal.days_to_close is not None and deal.pipeline_stage and not deal.pipeline_stage.is_closed %}<br />{{ deal.days_to_close }} days to close{% endif %}
+        </div>
+        {% if deal.contact %}
+        <hr />
+        <div class="small">
+          <strong>Contact</strong><br />
+          <a href="{% url 'crm:contact_detail' deal.contact.pk %}">{{ deal.contact.full_name }}</a>
+          {% if deal.contact.email %}<br /><a href="mailto:{{ deal.contact.email }}">{{ deal.contact.email }}</a>{% endif %}
+        </div>
+        {% endif %}
+        {% if deal.company %}
+        <div class="small mt-1">
+          <strong>Company</strong><br />
+          <a href="{% url 'crm:company_detail' deal.company.pk %}">{{ deal.company.name }}</a>
+        </div>
+        {% endif %}
+        {% if deal.owner %}
+        <div class="small mt-1 text-muted">Owner: {{ deal.owner.get_full_name|default:deal.owner.username }}</div>
+        {% endif %}
+      </div>
+    </div>
+    {% if deal.description or deal.notes %}
+    <div class="card mb-3">
+      <div class="card-header">Description / Notes</div>
+      <div class="card-body small">
+        {% if deal.description %}{{ deal.description|linebreaks }}{% endif %}
+        {% if deal.notes %}
+        <hr />
+        <strong>Notes</strong><br />{{ deal.notes|linebreaks }}
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if audit_logs %}
+    <div class="card mb-3">
+      <div class="card-header">History</div>
+      <div class="card-body p-0">
+        <ul class="list-group list-group-flush small">
+          {% for entry in audit_logs %}
+          <li class="list-group-item d-flex justify-content-between">
+            <span>{{ entry.get_action_display }} · {{ entry.timestamp|date:"M d, Y H:i" }}</span>
+            {% if entry.user %}<span class="text-muted">{{ entry.user.get_full_name|default:entry.user.username }}</span>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if custom_fields_data %}
+    <div class="card mb-3">
+      <div class="card-header">Custom fields</div>
+      <div class="card-body small">
+        {% for cf, value in custom_fields_data %}
+        <div class="mb-2">
+          <span class="text-muted">{{ cf.label }}:</span>
+          <span>{% if value %}{{ value }}{% else %}—{% endif %}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="col-md-8">
+    <div class="card mb-3">
+      <div class="card-header">Recent activities</div>
+      <div class="card-body p-0">
+        {% if activities %}
+        <div class="data-grid">
+          {% for activity in activities %}
+          <div class="data-grid-row">
+            <div class="me-3">
+              <span class="badge bg-primary">{{ activity.get_activity_type_display }}</span>
+            </div>
+            <div class="flex-grow-1">
+              <div class="fw-semibold">{{ activity.subject }}</div>
+              <div class="text-muted small">
+                {{ activity.created_at|date:"M d, Y H:i" }}
+                {% if activity.contact %} · {{ activity.contact.full_name }}{% endif %}
+              </div>
+            </div>
+            <div>
+              <a href="{% url 'crm:activity_edit' activity.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-4 text-center text-muted small">No activities yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

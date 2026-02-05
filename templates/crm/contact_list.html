@@ -1,46 +1,416 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}Contacts - Kikodo CRM{% endblock %}
 
 {% block page_title %}Contacts{% endblock %}
 
 {% block page_actions %}
-<button class="btn btn-primary">
+<a href="{% url 'crm:contact_export_csv' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-success me-2">
+    <i class="fas fa-download"></i> Export CSV
+</a>
+<a href="{% url 'crm:contact_import_csv' %}" class="btn btn-outline-primary me-2">
+    <i class="fas fa-upload"></i> Import CSV
+</a>
+<a href="{% url 'crm:contact_duplicates' %}" class="btn btn-outline-secondary me-2">
+    <i class="fas fa-copy"></i> Find duplicates
+</a>
+<a href="{% url 'crm:contact_create' %}" class="btn btn-primary">
     <i class="fas fa-plus"></i> Add Contact
-</button>
+</a>
 {% endblock %}
 
 {% block content %}
+<form id="bulk-delete-form" action="{% url 'crm:contact_bulk_delete' %}" method="post" class="d-none">
+    {% csrf_token %}
+</form>
 <div class="card">
     <div class="card-body p-0">
-        {% if contacts %}
-            <div class="data-grid">
-                {% for contact in contacts %}
-                    <div class="data-grid-row">
-                        <div class="flex-grow-1">
-                            <div class="fw-semibold">{{ contact.full_name }}</div>
-                            <div class="text-muted small">
-                                {% if contact.company %}
-                                    {{ contact.company.name }}
+        <div id="bulk-actions-bar" class="d-flex align-items-center gap-2 px-3 py-2 bg-light border-bottom" style="display: none !important;">
+            <span id="bulk-selected-count" class="fw-medium">0</span> selected
+            <button type="button" id="bulk-delete-btn" class="btn btn-outline-danger btn-sm" title="Delete selected">
+                <i class="fas fa-trash-alt"></i> Delete
+            </button>
+        </div>
+        <form method="get" id="contact-filter-form" class="px-3 py-2 border-bottom bg-light">
+            <input type="hidden" name="sort" value="{{ sort_by }}">
+            <input type="hidden" name="order" value="{{ order }}">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label mb-1" for="filter-country">Country</label>
+                    <select id="filter-country" name="country" class="form-select form-select-sm">
+                        <option value="">All</option>
+                        {% for c in countries %}
+                        <option value="{{ c }}" {% if filters.country == c %}selected{% endif %}>{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label mb-1 d-block">&nbsp;</label>
+                    <div class="dropdown" data-bs-auto-close="outside">
+                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="filter-industry-btn" data-bs-toggle="dropdown" aria-expanded="false">
+                            Industry {% if filters.industry %}<span class="badge bg-primary ms-1">{{ filters.industry|length }}</span>{% endif %}
+                        </button>
+                        <ul class="dropdown-menu px-3 py-2" style="max-height: 280px; overflow-y: auto; min-width: 200px;" aria-labelledby="filter-industry-btn">
+                            {% for ind in industries %}
+                            <li class="py-1">
+                                <label class="d-flex align-items-center gap-2 small mb-0 cursor-pointer">
+                                    <input type="checkbox" name="industry" value="{{ ind }}" {% if ind in filters.industry %}checked{% endif %} class="form-check-input">
+                                    <span>{{ ind }}</span>
+                                </label>
+                            </li>
+                            {% endfor %}
+                            {% if not industries %}
+                            <li class="small text-muted">No industries</li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="contact-filters-dropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-filter"></i> Filters
+                            {% if filters.country or filters.industry or filters.verified or filters.outreach or filters.pain_signal or filters.has_email or filters.has_linkedin or filters.has_company %}
+                            <span class="badge bg-primary ms-1">on</span>
+                            {% endif %}
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end px-3 py-2" style="min-width: 220px;" aria-labelledby="contact-filters-dropdown">
+                            <li class="dropdown-header small text-muted">Boolean filters</li>
+                            <li class="py-1">
+                                <span class="d-block small fw-medium">Verified</span>
+                                <label class="me-2 small"><input type="radio" name="verified" value="" {% if not filters.verified %}checked{% endif %}> Any</label>
+                                <label class="me-2 small"><input type="radio" name="verified" value="yes" {% if filters.verified == 'yes' %}checked{% endif %}> <i class="fas fa-check text-success"></i> Yes</label>
+                                <label class="small"><input type="radio" name="verified" value="no" {% if filters.verified == 'no' %}checked{% endif %}> <i class="fas fa-times text-danger"></i> No</label>
+                            </li>
+                            <li class="py-1">
+                                <span class="d-block small fw-medium">Outreach</span>
+                                <label class="me-2 small"><input type="radio" name="outreach" value="" {% if not filters.outreach %}checked{% endif %}> Any</label>
+                                <label class="me-2 small"><input type="radio" name="outreach" value="yes" {% if filters.outreach == 'yes' %}checked{% endif %}> <i class="fas fa-check text-success"></i> Yes</label>
+                                <label class="small"><input type="radio" name="outreach" value="no" {% if filters.outreach == 'no' %}checked{% endif %}> <i class="fas fa-times text-danger"></i> No</label>
+                            </li>
+                            <li class="py-1">
+                                <span class="d-block small fw-medium">Pain Signal (company)</span>
+                                <label class="me-2 small"><input type="radio" name="pain_signal" value="" {% if not filters.pain_signal %}checked{% endif %}> Any</label>
+                                <label class="me-2 small"><input type="radio" name="pain_signal" value="yes" {% if filters.pain_signal == 'yes' %}checked{% endif %}> <i class="fas fa-check text-success"></i> Yes</label>
+                                <label class="small"><input type="radio" name="pain_signal" value="no" {% if filters.pain_signal == 'no' %}checked{% endif %}> <i class="fas fa-times text-danger"></i> No</label>
+                            </li>
+                            <li class="py-1">
+                                <span class="d-block small fw-medium">Has email</span>
+                                <label class="me-2 small"><input type="radio" name="has_email" value="" {% if not filters.has_email %}checked{% endif %}> Any</label>
+                                <label class="me-2 small"><input type="radio" name="has_email" value="yes" {% if filters.has_email == 'yes' %}checked{% endif %}> <i class="fas fa-check text-success"></i> Yes</label>
+                                <label class="small"><input type="radio" name="has_email" value="no" {% if filters.has_email == 'no' %}checked{% endif %}> <i class="fas fa-times text-danger"></i> No</label>
+                            </li>
+                            <li class="py-1">
+                                <span class="d-block small fw-medium">Has LinkedIn</span>
+                                <label class="me-2 small"><input type="radio" name="has_linkedin" value="" {% if not filters.has_linkedin %}checked{% endif %}> Any</label>
+                                <label class="me-2 small"><input type="radio" name="has_linkedin" value="yes" {% if filters.has_linkedin == 'yes' %}checked{% endif %}> <i class="fas fa-check text-success"></i> Yes</label>
+                                <label class="small"><input type="radio" name="has_linkedin" value="no" {% if filters.has_linkedin == 'no' %}checked{% endif %}> <i class="fas fa-times text-danger"></i> No</label>
+                            </li>
+                            <li class="py-1">
+                                <span class="d-block small fw-medium">Has company</span>
+                                <label class="me-2 small"><input type="radio" name="has_company" value="" {% if not filters.has_company %}checked{% endif %}> Any</label>
+                                <label class="me-2 small"><input type="radio" name="has_company" value="yes" {% if filters.has_company == 'yes' %}checked{% endif %}> <i class="fas fa-check text-success"></i> Yes</label>
+                                <label class="small"><input type="radio" name="has_company" value="no" {% if filters.has_company == 'no' %}checked{% endif %}> <i class="fas fa-times text-danger"></i> No</label>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li class="d-flex gap-1">
+                                <button type="submit" class="btn btn-sm btn-primary flex-grow-1">Apply</button>
+                                <a href="{% url 'crm:contact_list' %}" class="btn btn-sm btn-outline-secondary">Reset</a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </form>
+        <form method="post" action="{% url 'crm:contact_create' %}">
+            {% csrf_token %}
+            <div class="table-responsive">
+                <table class="table table-hover table-striped table-sm mb-0 small">
+                    <thead class="table-light">
+                    <tr>
+                            <th class="pe-1" style="width: 2.5rem;">
+                                <input type="checkbox" id="select-all-contacts" class="form-check-input" title="Select all" aria-label="Select all">
+                            </th>
+                            <th>
+                                <a href="?sort=first_name&order={% if sort_by == 'first_name' and order == 'asc' %}desc{% else %}asc{% endif %}{% if filter_query %}&{{ filter_query }}{% endif %}" class="text-decoration-none text-dark">First Name</a>
+                                {% if sort_by == 'first_name' %}<i class="fas fa-sort-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}
+                            </th>
+                            <th>
+                                <a href="?sort=last_name&order={% if sort_by == 'last_name' and order == 'asc' %}desc{% else %}asc{% endif %}{% if filter_query %}&{{ filter_query }}{% endif %}" class="text-decoration-none text-dark">Last Name</a>
+                                {% if sort_by == 'last_name' %}<i class="fas fa-sort-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}
+                            </th>
+                            <th>
+                                <a href="?sort=email&order={% if sort_by == 'email' and order == 'asc' %}desc{% else %}asc{% endif %}{% if filter_query %}&{{ filter_query }}{% endif %}" class="text-decoration-none text-dark">Email</a>
+                                {% if sort_by == 'email' %}<i class="fas fa-sort-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}
+                            </th>
+                            <th>
+                                <a href="?sort=phone&order={% if sort_by == 'phone' and order == 'asc' %}desc{% else %}asc{% endif %}{% if filter_query %}&{{ filter_query }}{% endif %}" class="text-decoration-none text-dark">Phone</a>
+                                {% if sort_by == 'phone' %}<i class="fas fa-sort-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}
+                            </th>
+                            <th>
+                                <a href="?sort=mobile&order={% if sort_by == 'mobile' and order == 'asc' %}desc{% else %}asc{% endif %}{% if filter_query %}&{{ filter_query }}{% endif %}" class="text-decoration-none text-dark">Mobile</a>
+                                {% if sort_by == 'mobile' %}<i class="fas fa-sort-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}
+                            </th>
+                            <th>
+                                <a href="?sort=job_title&order={% if sort_by == 'job_title' and order == 'asc' %}desc{% else %}asc{% endif %}{% if filter_query %}&{{ filter_query }}{% endif %}" class="text-decoration-none text-dark">Job Title</a>
+                                {% if sort_by == 'job_title' %}<i class="fas fa-sort-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}
+                            </th>
+                            <th>
+                                <a href="?sort=company&order={% if sort_by == 'company' and order == 'asc' %}desc{% else %}asc{% endif %}{% if filter_query %}&{{ filter_query }}{% endif %}" class="text-decoration-none text-dark">Company</a>
+                                {% if sort_by == 'company' %}<i class="fas fa-sort-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}
+                            </th>
+                            <th>
+                                <a href="?sort=city&order={% if sort_by == 'city' and order == 'asc' %}desc{% else %}asc{% endif %}{% if filter_query %}&{{ filter_query }}{% endif %}" class="text-decoration-none text-dark">City</a>
+                                {% if sort_by == 'city' %}<i class="fas fa-sort-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}
+                            </th>
+                            <th>
+                                <a href="?sort=state&order={% if sort_by == 'state' and order == 'asc' %}desc{% else %}asc{% endif %}{% if filter_query %}&{{ filter_query }}{% endif %}" class="text-decoration-none text-dark">State</a>
+                                {% if sort_by == 'state' %}<i class="fas fa-sort-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}
+                            </th>
+                            <th>
+                                <a href="?sort=country&order={% if sort_by == 'country' and order == 'asc' %}desc{% else %}asc{% endif %}{% if filter_query %}&{{ filter_query }}{% endif %}" class="text-decoration-none text-dark">Country</a>
+                                {% if sort_by == 'country' %}<i class="fas fa-sort-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}
+                            </th>
+                            <th>
+                                <a href="?sort=last_contact&order={% if sort_by == 'last_contact' and order == 'asc' %}desc{% else %}asc{% endif %}{% if filter_query %}&{{ filter_query }}{% endif %}" class="text-decoration-none text-dark">Last contact</a>
+                                {% if sort_by == 'last_contact' %}<i class="fas fa-sort-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}
+                            </th>
+                            <th>
+                                <a href="?sort=outreach_status&order={% if sort_by == 'outreach_status' and order == 'asc' %}desc{% else %}asc{% endif %}{% if filter_query %}&{{ filter_query }}{% endif %}" class="text-decoration-none text-dark">Outreach</a>
+                                {% if sort_by == 'outreach_status' %}<i class="fas fa-sort-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}
+                            </th>
+                            <th>
+                                <a href="?sort=linkedin&order={% if sort_by == 'linkedin' and order == 'asc' %}desc{% else %}asc{% endif %}{% if filter_query %}&{{ filter_query }}{% endif %}" class="text-decoration-none text-dark">LinkedIn</a>
+                                {% if sort_by == 'linkedin' %}<i class="fas fa-sort-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}
+                            </th>
+                            <th></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for contact in contacts %}
+                            <tr>
+                                <td class="pe-1">
+                                    <input type="checkbox" class="form-check-input row-select-contact" value="{{ contact.pk }}" aria-label="Select {{ contact.first_name|default:contact.email }}">
+                                </td>
+                                <td class="editable-cell" data-editable data-entity="contact" data-id="{{ contact.pk }}" data-field="first_name" data-value="{{ contact.first_name|default:'' }}" data-detail-url="{{ contact.get_absolute_url }}">
+                                    <a href="{{ contact.get_absolute_url }}" class="text-decoration-none">{{ contact.first_name|default:"—" }}</a>
+                                </td>
+                                <td class="editable-cell" data-editable data-entity="contact" data-id="{{ contact.pk }}" data-field="last_name" data-value="{{ contact.last_name|default:'' }}">{{ contact.last_name|default:"—" }}</td>
+                                <td class="editable-cell" data-editable data-entity="contact" data-id="{{ contact.pk }}" data-field="email" data-value="{{ contact.email|default:'' }}">
+                                    {% if contact.email %}
+                                        <a href="mailto:{{ contact.email }}">{{ contact.email }}</a>
+                                    {% else %}—
+                                    {% endif %}
+                                </td>
+                                <td class="editable-cell" data-editable data-entity="contact" data-id="{{ contact.pk }}" data-field="phone" data-value="{{ contact.phone|default:'' }}">{{ contact.phone|default:"—" }}</td>
+                                <td class="editable-cell" data-editable data-entity="contact" data-id="{{ contact.pk }}" data-field="mobile" data-value="{{ contact.mobile|default:'' }}">{{ contact.mobile|default:"—" }}</td>
+                                <td class="editable-cell" data-editable data-entity="contact" data-id="{{ contact.pk }}" data-field="job_title" data-value="{{ contact.job_title|default:'' }}">{{ contact.job_title|default:"—" }}</td>
+                                <td>
+                                    {% if contact.company %}
+                                        <a href="{{ contact.company.get_absolute_url }}">{{ contact.company.name }}</a>
+                                    {% else %}—
+                                    {% endif %}
+                                </td>
+                                <td class="editable-cell" data-editable data-entity="contact" data-id="{{ contact.pk }}" data-field="city" data-value="{{ contact.city|default:'' }}">{{ contact.city|default:"—" }}</td>
+                                <td class="editable-cell" data-editable data-entity="contact" data-id="{{ contact.pk }}" data-field="state" data-value="{{ contact.state|default:'' }}">{{ contact.state|default:"—" }}</td>
+                                <td class="editable-cell" data-editable data-entity="contact" data-id="{{ contact.pk }}" data-field="country" data-value="{{ contact.country|default:'' }}">{{ contact.country|default:"—" }}</td>
+                                <td>
+                                    {% if contact.last_contact %}{{ contact.last_contact|date:"Y-m-d H:i" }}{% else %}—{% endif %}
+                                </td>
+                                <td class="editable-cell" data-editable data-entity="contact" data-id="{{ contact.pk }}" data-field="outreach_status" data-type="select" data-value="{{ contact.outreach_status|default:'' }}">
+                                    <span class="badge bg-secondary">{{ contact.get_outreach_status_display }}</span>
+                                </td>
+                                <td class="editable-cell" data-editable data-entity="contact" data-id="{{ contact.pk }}" data-field="linkedin_url" data-type="url" data-value="{{ contact.linkedin|default:contact.linkedin_url|default:'' }}">
+                                    {% if contact.linkedin %}
+                                        <a href="{{ contact.linkedin }}" target="_blank" rel="noopener noreferrer"><i class="fab fa-linkedin"></i></a>
+                                    {% else %}—
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{% url 'crm:contact_edit' contact.pk %}" class="btn btn-sm btn-link text-decoration-none">Edit</a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        <!-- Quick add row (hidden by default) -->
+                        <tr id="quick-add-row" class="table-success" style="display: none;">
+                            <td class="pe-1"></td>
+                            <td><input type="text" name="first_name" class="form-control form-control-sm" placeholder="First name" required /></td>
+                            <td><input type="text" name="last_name" class="form-control form-control-sm" placeholder="Last name" required /></td>
+                            <td><input type="email" name="email" class="form-control form-control-sm" placeholder="Email" /></td>
+                            <td><input type="text" name="phone" class="form-control form-control-sm" placeholder="Phone" /></td>
+                            <td><input type="text" name="mobile" class="form-control form-control-sm" placeholder="Mobile" /></td>
+                            <td><input type="text" name="job_title" class="form-control form-control-sm" placeholder="Job title" /></td>
+                            <td></td>
+                            <td><input type="text" name="city" class="form-control form-control-sm" placeholder="City" /></td>
+                            <td><input type="text" name="state" class="form-control form-control-sm" placeholder="State" /></td>
+                            <td><input type="text" name="country" class="form-control form-control-sm" placeholder="Country" /></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td><button type="submit" class="btn btn-sm btn-primary">Add</button></td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="p-2 text-center border-top">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <form method="get" class="d-flex align-items-center gap-2">
+                            {% for key, value in request.GET.items %}
+                                {% if key != 'page_size' and key != 'page' %}
+                                    <input type="hidden" name="{{ key }}" value="{{ value }}">
                                 {% endif %}
-                                {% if contact.job_title %}
-                                    • {{ contact.job_title }}
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div class="text-end">
-                            <span class="badge bg-info">{{ contact.get_status_display }}</span>
-                            <div class="text-muted small">{{ contact.email }}</div>
+                            {% endfor %}
+                            <label class="small mb-0">
+                                Rows per page:
+                                <select name="page_size" class="form-select form-select-sm d-inline-block w-auto" onchange="this.form.submit()">
+                                    {% for size in page_size_options %}
+                                        <option value="{{ size }}" {% if size == page_size %}selected{% endif %}>{{ size }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                        </form>
+                        <div>
+                            <button type="button" id="add-row-btn" class="btn btn-sm btn-outline-primary me-2">
+                                <i class="fas fa-plus"></i> Add row
+                            </button>
+                            {% if page_obj %}
+                            <nav aria-label="Contacts pagination" class="d-inline-block">
+                                <ul class="pagination pagination-sm mb-0">
+                                    {% if page_obj.has_previous %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}&page_size={{ page_size }}{% if filter_query %}&{{ filter_query }}{% endif %}&sort={{ sort_by }}&order={{ order }}">&laquo;</a>
+                                        </li>
+                                    {% else %}
+                                        <li class="page-item disabled"><span class="page-link">&laquo;</span></li>
+                                    {% endif %}
+                                    {% for num in page_obj.paginator.page_range %}
+                                        {% if num == page_obj.number %}
+                                            <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                                        {% elif num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
+                                            <li class="page-item">
+                                                <a class="page-link" href="?page={{ num }}&page_size={{ page_size }}{% if filter_query %}&{{ filter_query }}{% endif %}&sort={{ sort_by }}&order={{ order }}">{{ num }}</a>
+                                            </li>
+                                        {% endif %}
+                                    {% endfor %}
+                                    {% if page_obj.has_next %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?page={{ page_obj.next_page_number }}&page_size={{ page_size }}{% if filter_query %}&{{ filter_query }}{% endif %}&sort={{ sort_by }}&order={{ order }}">&raquo;</a>
+                                        </li>
+                                    {% else %}
+                                        <li class="page-item disabled"><span class="page-link">&raquo;</span></li>
+                                    {% endif %}
+                                </ul>
+                            </nav>
+                            {% endif %}
                         </div>
                     </div>
-                {% endfor %}
-            </div>
-        {% else %}
-            <div class="p-4 text-center text-muted">
-                <i class="fas fa-users fa-2x mb-2"></i>
-                <p class="mb-0">No contacts found</p>
-            </div>
-        {% endif %}
+                </div>
+            </form>
     </div>
 </div>
+
+<style>
+    .table th a {
+        white-space: nowrap;
+    }
+    .table th {
+        position: sticky;
+        top: 0;
+        background-color: #f8f9fa;
+        z-index: 10;
+    }
+    .table td {
+        white-space: nowrap;
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .table td.editable-cell[data-editable] {
+        cursor: pointer;
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Submit filter form when a filter dropdown closes (Industry or Filters)
+    var contactFilterForm = document.getElementById('contact-filter-form');
+    if (contactFilterForm) {
+        function submitContactFilters() { contactFilterForm.submit(); }
+        contactFilterForm.querySelector('#filter-country') && contactFilterForm.querySelector('#filter-country').addEventListener('change', submitContactFilters);
+        [ 'filter-industry-btn', 'contact-filters-dropdown' ].forEach(function(btnId) {
+            var btn = document.getElementById(btnId);
+            if (btn) {
+                var dropdownEl = btn.closest('.dropdown');
+                if (dropdownEl) dropdownEl.addEventListener('hidden.bs.dropdown', submitContactFilters);
+            }
+        });
+    }
+
+    const addRowBtn = document.getElementById('add-row-btn');
+    const quickAddRow = document.getElementById('quick-add-row');
+    if (addRowBtn && quickAddRow) {
+        addRowBtn.addEventListener('click', function() {
+            quickAddRow.style.display = '';
+            var firstInput = quickAddRow.querySelector('input:not([type="hidden"])');
+            if (firstInput) firstInput.focus();
+        });
+    }
+
+    var selectAll = document.getElementById('select-all-contacts');
+    var rowCheckboxes = document.querySelectorAll('.row-select-contact');
+    var bulkBar = document.getElementById('bulk-actions-bar');
+    var bulkCount = document.getElementById('bulk-selected-count');
+    var bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+    var bulkForm = document.getElementById('bulk-delete-form');
+
+    function updateBulkUI() {
+        var checked = document.querySelectorAll('.row-select-contact:checked');
+        var n = checked.length;
+        if (n > 0) {
+            bulkBar.style.setProperty('display', 'flex', 'important');
+            bulkCount.textContent = n;
+        } else {
+            bulkBar.style.display = 'none';
+            if (selectAll) selectAll.checked = false;
+        }
+    }
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function() {
+            rowCheckboxes.forEach(function(cb) { cb.checked = selectAll.checked; });
+            updateBulkUI();
+        });
+    }
+    rowCheckboxes.forEach(function(cb) {
+        cb.addEventListener('change', updateBulkUI);
+    });
+
+    if (bulkDeleteBtn && bulkForm) {
+        bulkDeleteBtn.addEventListener('click', function() {
+            var ids = Array.from(document.querySelectorAll('.row-select-contact:checked')).map(function(cb) { return cb.value; });
+            if (ids.length === 0) return;
+            bulkForm.innerHTML = '';
+            var csrf = document.querySelector('[name=csrfmiddlewaretoken]');
+            if (csrf) {
+                var c = document.createElement('input');
+                c.type = 'hidden';
+                c.name = 'csrfmiddlewaretoken';
+                c.value = csrf.value;
+                bulkForm.appendChild(c);
+            }
+            ids.forEach(function(id) {
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'ids';
+                input.value = id;
+                bulkForm.appendChild(input);
+            });
+            bulkForm.submit();
+        });
+    }
+});
+</script>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'crm/inline-edit.js' %}"></script>
 {% endblock %}
