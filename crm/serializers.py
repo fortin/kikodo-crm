@@ -49,6 +49,7 @@ class CompanySerializer(serializers.ModelSerializer):
             "description",
             "annual_revenue",
             "employee_count",
+            "size_category",
             "facility_count",
             "linkedin_url",
             "priority_tier",
