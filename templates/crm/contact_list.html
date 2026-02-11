@@ -5,6 +5,9 @@
 
 {% block page_title %}Contacts{% endblock %}
 
+{% block page_actions_leading %}
+{% include "crm/_page_search.html" %}
+{% endblock %}
 {% block page_actions %}
 <a href="{% url 'crm:contact_export_csv' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-success me-2">
     <i class="fas fa-download"></i> Export CSV
@@ -220,11 +223,13 @@
                                 <td class="editable-cell" data-editable data-entity="contact" data-id="{{ contact.pk }}" data-field="outreach_status" data-type="select" data-value="{{ contact.outreach_status|default:'' }}">
                                     <span class="badge bg-secondary">{{ contact.get_outreach_status_display }}</span>
                                 </td>
-                                <td class="editable-cell" data-editable data-entity="contact" data-id="{{ contact.pk }}" data-field="linkedin_url" data-type="url" data-value="{{ contact.linkedin|default:contact.linkedin_url|default:'' }}">
-                                    {% if contact.linkedin %}
-                                        <a href="{{ contact.linkedin }}" target="_blank" rel="noopener noreferrer"><i class="fab fa-linkedin"></i></a>
-                                    {% else %}—
-                                    {% endif %}
+                                <td>
+                                    {% with url=contact.linkedin|default:contact.linkedin_url %}
+                                        {% if url %}
+                                            <a href="{{ url }}" target="_blank" rel="noopener noreferrer" title="{{ url }}"><i class="fab fa-linkedin"></i></a>
+                                        {% else %}—
+                                        {% endif %}
+                                    {% endwith %}
                                 </td>
                                 <td>
                                     <a href="{% url 'crm:contact_edit' contact.pk %}" class="btn btn-sm btn-link text-decoration-none">Edit</a>

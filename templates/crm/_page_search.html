@@ -1,0 +1,13 @@
+<div class="page-search-wrapper me-2 align-items-center d-flex">
+  <button type="button" class="btn btn-outline-secondary btn-sm page-search-toggle" aria-label="Search" title="Search">
+    <i class="fas fa-search"></i>
+  </button>
+  <form method="get" class="page-search-form d-none ms-1 align-items-center d-flex">
+    {% for key, value in request.GET.items %}
+      {% if key != 'q' and key != 'page' %}
+        <input type="hidden" name="{{ key }}" value="{{ value }}">
+      {% endif %}
+    {% endfor %}
+    <input type="search" name="q" value="{{ search_query|default:'' }}" placeholder="Search..." class="form-control form-control-sm" style="width: 180px;" autocomplete="off">
+  </form>
+</div>
