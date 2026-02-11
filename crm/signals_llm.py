@@ -85,7 +85,8 @@ def call_ollama(
 def parse_llm_signal_response(raw: str, source_url: str) -> dict:
     """
     Parse LLM response into Signal field dict. Expects JSON block or key: value lines.
-    Returns dict with keys: headline, week, source_type, relevance, summary, potential_action, competitors, competitors_notes.
+    Returns dict with keys: headline, week, source_type, relevance, summary, potential_action,
+    competitors, competitors_notes, mentioned_companies (list of dicts with name, industry, website, description, is_competitor).
     """
     out = {
         "headline": "",
@@ -96,16 +97,32 @@ def parse_llm_signal_response(raw: str, source_url: str) -> dict:
         "potential_action": "",
         "competitors": "",
         "competitors_notes": "",
+        "mentioned_companies": [],
     }
+
+    def set_from_data(data):
+        for key in ("headline", "week", "source_type", "relevance", "summary", "potential_action", "competitors", "competitors_notes"):
+            if key in data and data[key] is not None:
+                out[key] = str(data[key]).strip()[:5000]
+        if "mentioned_companies" in data and isinstance(data["mentioned_companies"], list):
+            out["mentioned_companies"] = []
+            for item in data["mentioned_companies"]:
+                if not isinstance(item, dict) or not item.get("name"):
+                    continue
+                out["mentioned_companies"].append({
+                    "name": str(item["name"]).strip()[:255],
+                    "industry": str(item.get("industry") or "").strip()[:100],
+                    "website": str(item.get("website") or "").strip()[:500],
+                    "description": str(item.get("description") or "").strip()[:2000],
+                    "is_competitor": bool(item.get("is_competitor", False)),
+                })
 
     # Try to find JSON in the response (```json ... ``` or { ... })
     json_match = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", raw)
     if json_match:
         try:
             data = json.loads(json_match.group(1))
-            for key in out:
-                if key in data and data[key] is not None:
-                    out[key] = str(data[key]).strip()[:5000]
+            set_from_data(data)
             return out
         except json.JSONDecodeError:
             pass
@@ -114,9 +131,7 @@ def parse_llm_signal_response(raw: str, source_url: str) -> dict:
     if plain_json:
         try:
             data = json.loads(plain_json.group(0))
-            for key in out:
-                if key in data and data[key] is not None:
-                    out[key] = str(data[key]).strip()[:5000]
+            set_from_data(data)
             return out
         except json.JSONDecodeError:
             pass
@@ -160,6 +175,7 @@ Extract and return a single JSON object with exactly these keys (use empty strin
 - potential_action: suggested next step or how to use this signal (e.g. "Track as innovator; mention in outreach")
 - competitors: any companies or products mentioned (comma-separated)
 - competitors_notes: audience, content focus, relevance to Kikodo ICP, or positioning notes
+- mentioned_companies: JSON array of companies mentioned in the content. For each company include: name (required), industry (optional), website (optional URL), description (optional 1-2 sentences), is_competitor (boolean: true if they compete with Kikodo / are in the same space as a competitor, false otherwise). Only include real organizations (not products). Use empty array [] if none.
 
 Page URL: {source_url}
 
@@ -200,6 +216,7 @@ Extract and return a single JSON object with exactly these keys (use empty strin
 - potential_action: suggested next step or how to use this signal (e.g. "Track as innovator; mention in outreach")
 - competitors: any companies or products mentioned (comma-separated)
 - competitors_notes: audience, content focus, relevance to Kikodo ICP, or positioning notes
+- mentioned_companies: JSON array of companies mentioned in the content. For each company include: name (required), industry (optional), website (optional URL), description (optional 1-2 sentences), is_competitor (boolean: true if they compete with Kikodo / are in the same space as a competitor, false otherwise). Only include real organizations (not products). Use empty array [] if none.
 
 Page URL: {source_url}
 

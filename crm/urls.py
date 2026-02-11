@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from . import api_views, views
 
 router = DefaultRouter()
+
 router.register(r"companies", api_views.CompanyViewSet)
 router.register(r"contacts", api_views.ContactViewSet)
 router.register(r"deals", api_views.DealViewSet)
@@ -75,5 +76,7 @@ urlpatterns = [
     path("signals/<int:pk>/edit/", views.signal_edit, name="signal_edit"),
     path("signals/<int:pk>/delete/", views.signal_delete, name="signal_delete"),
     path("unsubscribe/", views.unsubscribe, name="unsubscribe"),
+    path("api/config/", api_views.config),
+    path("api/token/", api_views.obtain_token),
     path("api/", include(router.urls)),
 ]

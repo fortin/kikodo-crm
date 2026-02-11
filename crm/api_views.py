@@ -1,11 +1,15 @@
 from datetime import datetime, timedelta
 
+from django.conf import settings as django_settings
+from django.contrib.auth import authenticate
 from django.db.models import Avg, Count, Q, Sum
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, permissions, status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.authtoken.models import Token
 
 from .models import (
     Activity,
@@ -33,6 +37,41 @@ from .serializers import (
 )
 
 
+@api_view(["GET"])
+@permission_classes([AllowAny])
+@throttle_classes([])
+def config(request):
+    """Public config for extensions (e.g. SalesNav exporter). Returns BASE_URL from .env and derived api_url."""
+    base = (getattr(django_settings, "BASE_URL", "") or "").rstrip("/")
+    api_url = base + "/api" if base else ""
+    return Response({"base_url": base or None, "api_url": api_url or None})
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+@throttle_classes([])
+def obtain_token(request):
+    """
+    Obtain an API token. POST with JSON: {"username": "...", "password": "..."}.
+    Returns {"token": "<key>"}. Use in header: Authorization: Token <key>
+    """
+    username = (request.data.get("username") or "").strip()
+    password = request.data.get("password") or ""
+    if not username or not password:
+        return Response(
+            {"error": "username and password are required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    user = authenticate(request, username=username, password=password)
+    if user is None:
+        return Response(
+            {"error": "Invalid credentials"},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+    token, _ = Token.objects.get_or_create(user=user)
+    return Response({"token": token.key})
+
+
 class CompanyViewSet(viewsets.ModelViewSet):
     queryset = Company.objects.all()
     serializer_class = CompanySerializer
@@ -43,7 +82,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
         filters.OrderingFilter,
     ]
     filterset_fields = ["industry", "is_active", "owner"]
-    search_fields = ["name", "email", "phone", "city", "state"]
+    search_fields = ["name", "email", "industry", "phone", "city", "state"]
     ordering_fields = ["name", "created_at", "annual_revenue"]
     ordering = ["name"]
 
@@ -284,8 +323,13 @@ class PipelineStageViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     queryset = PipelineStage.objects.all()
     serializer_class = PipelineStageSerializer
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
     filterset_fields = ["pipeline"]
+    search_fields = ["name", "pipeline__name"]
     ordering_fields = ["order", "name"]
     ordering = ["pipeline", "order"]
 
@@ -295,21 +339,24 @@ class ContactTagViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     queryset = ContactTag.objects.all()
     serializer_class = ContactTagSerializer
-    filter_backends = [DjangoFilterBackend]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["contact", "tag"]
+    search_fields = ["contact__first_name", "contact__last_name", "tag__name"]
 
 
 class CompanyTagViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     queryset = CompanyTag.objects.all()
     serializer_class = CompanyTagSerializer
-    filter_backends = [DjangoFilterBackend]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["company", "tag"]
+    search_fields = ["company__name", "tag__name"]
 
 
 class DealTagViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     queryset = DealTag.objects.all()
     serializer_class = DealTagSerializer
-    filter_backends = [DjangoFilterBackend]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["deal", "tag"]
+    search_fields = ["deal__name", "tag__name"]
