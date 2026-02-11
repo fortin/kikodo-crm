@@ -3,6 +3,9 @@
 {% block title %}Activities - Kikodo CRM{% endblock %}
 {% block page_title %}Activities{% endblock %}
 
+{% block page_actions_leading %}
+{% include "crm/_page_search.html" %}
+{% endblock %}
 {% block page_actions %}
 <a href="{% url 'crm:activity_export_csv' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-success me-2">
   <i class="fas fa-download"></i> Export CSV
@@ -174,6 +177,7 @@
           </tbody>
         </table>
       </div>
+    </form>
       <div class="p-2 text-center border-top">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
           <form method="get" class="d-flex align-items-center gap-2">
@@ -227,7 +231,6 @@
           </div>
         </div>
       </div>
-    </form>
   </div>
 </div>
 
