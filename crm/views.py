@@ -206,6 +206,22 @@ def contact_list(request):
     elif has_company == "no":
         contacts_qs = contacts_qs.filter(company__isnull=True)
 
+    # Text search
+    search_query = (request.GET.get("q") or "").strip()
+    if search_query:
+        contacts_qs = contacts_qs.filter(
+            Q(first_name__icontains=search_query)
+            | Q(last_name__icontains=search_query)
+            | Q(email__icontains=search_query)
+            | Q(company__name__icontains=search_query)
+            | Q(phone__icontains=search_query)
+            | Q(mobile__icontains=search_query)
+            | Q(job_title__icontains=search_query)
+            | Q(city__icontains=search_query)
+            | Q(state__icontains=search_query)
+            | Q(country__icontains=search_query)
+        )
+
     # Sorting (all fields)
     sort_by = request.GET.get("sort", "last_name")
     order = request.GET.get("order", "asc")
@@ -288,6 +304,7 @@ def contact_list(request):
         "next_order": "desc" if order == "asc" else "asc",
         "filters": filters,
         "filter_query": filter_query,
+        "search_query": search_query,
     }
     return render(request, "crm/contact_list.html", context)
 
@@ -550,6 +567,18 @@ def company_list(request):
             )
         ).filter(_linkedin_count=0)
 
+    # Text search
+    search_query = (request.GET.get("q") or "").strip()
+    if search_query:
+        qs = qs.filter(
+            Q(name__icontains=search_query)
+            | Q(industry__icontains=search_query)
+            | Q(email__icontains=search_query)
+            | Q(phone__icontains=search_query)
+            | Q(city__icontains=search_query)
+            | Q(state__icontains=search_query)
+        )
+
     companies_qs = qs.prefetch_related(
         Prefetch(
             "operating_areas",
@@ -605,6 +634,7 @@ def company_list(request):
             "has_email": has_email,
             "has_linkedin": has_linkedin,
         },
+        "search_query": search_query,
     }
     return render(request, "crm/company_list.html", context)
 
@@ -747,6 +777,15 @@ def deal_list(request):
     )
     deals_qs = filter_queryset_by_team(deals_qs, request.user, "owner")
 
+    search_query = (request.GET.get("q") or "").strip()
+    if search_query:
+        deals_qs = deals_qs.filter(
+            Q(name__icontains=search_query)
+            | Q(contact__first_name__icontains=search_query)
+            | Q(contact__last_name__icontains=search_query)
+            | Q(company__name__icontains=search_query)
+        )
+
     # Pagination
     try:
         page_size = int(request.GET.get("page_size") or 20)
@@ -767,6 +806,7 @@ def deal_list(request):
         "page_obj": page_obj,
         "page_size": page_obj.paginator.per_page,
         "page_size_options": [20, 40, 60, 80, 100],
+        "search_query": search_query,
     }
     return render(request, "crm/deal_list.html", context)
 
@@ -989,6 +1029,16 @@ def activity_list(request):
     """Activity list view"""
     activities_qs = Activity.objects.select_related("contact", "company", "deal")
 
+    search_query = (request.GET.get("q") or "").strip()
+    if search_query:
+        activities_qs = activities_qs.filter(
+            Q(subject__icontains=search_query)
+            | Q(description__icontains=search_query)
+            | Q(contact__first_name__icontains=search_query)
+            | Q(contact__last_name__icontains=search_query)
+            | Q(company__name__icontains=search_query)
+        )
+
     # Handle sorting
     sort_by = request.GET.get("sort", "due_date")
     sort_order = request.GET.get("order", "desc")
@@ -1046,6 +1096,7 @@ def activity_list(request):
         "sort_by": sort_by,
         "sort_order": sort_order,
         "next_order": next_order,
+        "search_query": search_query,
     }
     return render(request, "crm/activity_list.html", context)
 
@@ -1181,6 +1232,12 @@ def sequence_list(request):
     """List messaging sequences."""
     sequences_qs = Sequence.objects.all().order_by("name")
 
+    search_query = (request.GET.get("q") or "").strip()
+    if search_query:
+        sequences_qs = sequences_qs.filter(
+            Q(name__icontains=search_query) | Q(description__icontains=search_query)
+        )
+
     # Pagination
     try:
         page_size = int(request.GET.get("page_size") or 20)
@@ -1204,6 +1261,7 @@ def sequence_list(request):
             "page_obj": page_obj,
             "page_size": page_obj.paginator.per_page,
             "page_size_options": [20, 40, 60, 80, 100],
+            "search_query": search_query,
         },
     )
 
@@ -2329,6 +2387,14 @@ def signal_list(request):
     if industry_list:
         signals_qs = signals_qs.filter(linked_company__industry__in=industry_list)
 
+    search_query = (request.GET.get("q") or "").strip()
+    if search_query:
+        signals_qs = signals_qs.filter(
+            Q(headline__icontains=search_query)
+            | Q(summary__icontains=search_query)
+            | Q(source_url__icontains=search_query)
+        )
+
     sort_by = request.GET.get("sort", "date_logged")
     order = request.GET.get("order", "desc")
     allowed = [
@@ -2374,6 +2440,7 @@ def signal_list(request):
         "sort_by": sort_by,
         "sort_order": order,
         "next_order": next_order,
+        "search_query": search_query,
     }
     return render(request, "crm/signal_list.html", context)
 
@@ -2397,6 +2464,48 @@ def _create_signal_from_data(data):
     return signal
 
 
+def _ensure_companies_from_mentioned(mentioned_companies):
+    """
+    Create or update Company records from LLM-mentioned companies.
+    Each item: name (required), industry, website, description, is_competitor.
+    Returns list of (Company, created) for companies that had a valid name.
+    """
+    from django.core.validators import URLValidator
+    from django.core.exceptions import ValidationError
+
+    result = []
+    for item in mentioned_companies or []:
+        name = (item.get("name") or "").strip()[:255]
+        if not name:
+            continue
+        is_competitor = bool(item.get("is_competitor", False))
+        industry = (item.get("industry") or "").strip()[:100]
+        website = (item.get("website") or "").strip()[:500]
+        description = (item.get("description") or "").strip()[:2000]
+        if website:
+            try:
+                URLValidator()(website)
+            except ValidationError:
+                website = ""
+        company = Company.objects.filter(name__iexact=name).first()
+        created = False
+        if not company:
+            company = Company(name=name)
+            created = True
+        elif company.name != name:
+            company.name = name
+        company.competitor = is_competitor
+        if industry:
+            company.industry = industry
+        if website:
+            company.website = website
+        if description:
+            company.description = description
+        company.save()
+        result.append((company, created))
+    return result
+
+
 @login_required
 def signal_create(request):
     """Create signal: form with URL only; POST fetches URL and calls LLM to populate, then redirects to edit.
@@ -2413,10 +2522,24 @@ def signal_create(request):
 
                     data = populate_signal_from_text(source_url, pasted_content)
                     signal = _create_signal_from_data(data)
-                    messages.success(
-                        request,
-                        "Signal created from pasted content and LLM. You can edit it below.",
+                    companies_created = _ensure_companies_from_mentioned(
+                        data.get("mentioned_companies")
                     )
+                    if companies_created and not signal.linked_company:
+                        signal.linked_company = companies_created[0][0]
+                        signal.save()
+                    if companies_created:
+                        new_count = sum(1 for _, c in companies_created if c)
+                        msg = "Signal created from pasted content and LLM."
+                        if new_count:
+                            msg += f" Added {new_count} new company(ies) to the database."
+                        msg += " You can edit it below."
+                        messages.success(request, msg)
+                    else:
+                        messages.success(
+                            request,
+                            "Signal created from pasted content and LLM. You can edit it below.",
+                        )
                     return redirect("crm:signal_edit", pk=signal.pk)
                 except Exception as e:
                     messages.error(
@@ -2445,9 +2568,23 @@ def signal_create(request):
 
                 data = populate_signal_from_url(source_url)
                 signal = _create_signal_from_data(data)
-                messages.success(
-                    request, "Signal created from URL and LLM. You can edit it below."
+                companies_created = _ensure_companies_from_mentioned(
+                    data.get("mentioned_companies")
                 )
+                if companies_created and not signal.linked_company:
+                    signal.linked_company = companies_created[0][0]
+                    signal.save()
+                if companies_created:
+                    new_count = sum(1 for _, c in companies_created if c)
+                    msg = "Signal created from URL and LLM."
+                    if new_count:
+                        msg += f" Added {new_count} new company(ies) to the database."
+                    msg += " You can edit it below."
+                    messages.success(request, msg)
+                else:
+                    messages.success(
+                        request, "Signal created from URL and LLM. You can edit it below."
+                    )
                 return redirect("crm:signal_edit", pk=signal.pk)
             except Exception as e:
                 try:
@@ -2473,10 +2610,18 @@ def signal_create(request):
                             "source_url": source_url,
                         },
                     )
-                messages.error(
-                    request,
-                    f"Could not fetch URL or call LLM: {e}. Add the URL manually and edit the signal.",
-                )
+                if isinstance(e, ModuleNotFoundError) and "requests" in str(e):
+                    messages.error(
+                        request,
+                        "The 'requests' package is not installed in this environment. "
+                        "Install it with: pip install requests (or pip install -r requirements.txt). "
+                        "Then add the URL manually and edit the signal, or restart the server and try again.",
+                    )
+                else:
+                    messages.error(
+                        request,
+                        f"Could not fetch URL or call LLM: {e}. Add the URL manually and edit the signal.",
+                    )
                 signal = Signal(source_url=source_url)
                 signal.save()
                 return redirect("crm:signal_edit", pk=signal.pk)

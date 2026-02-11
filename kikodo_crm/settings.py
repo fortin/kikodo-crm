@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # Third party apps
     "rest_framework",
+    "rest_framework.authtoken",
     "corsheaders",
     "django_filters",
     "import_export",
@@ -175,9 +176,8 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
-    "DEFAULT_THROTTLE_CLASSES": [
-        "rest_framework.throttling.UserRateThrottle",
-    ],
+    # Throttling requires the cache backend (Redis). Disabled so API works without Redis.
+    "DEFAULT_THROTTLE_CLASSES": [],
     "DEFAULT_THROTTLE_RATES": {
         "user": "100/hour",
     },
@@ -187,9 +187,11 @@ REST_FRAMEWORK = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
 ]
+# Allow SalesNav extension (and any chrome-extension) to fetch /api/config/
+CORS_ALLOWED_ORIGIN_REGEXES = [r"^chrome-extension://"]
 
 # Crispy Forms
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
@@ -208,6 +210,8 @@ EMAIL_BACKEND = config(
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="noreply@example.com")
 # Base URL for unsubscribe links in sequence emails (e.g. https://app.example.com)
 SITE_URL = config("SITE_URL", default="")
+# Base URL where the CRM is served (e.g. http://localhost:8081). Used for API config and extensions.
+BASE_URL = config("BASE_URL", default="http://localhost:8081")
 
 # Celery Configuration (for background tasks)
 CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/0")

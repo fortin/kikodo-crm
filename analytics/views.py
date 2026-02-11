@@ -83,8 +83,13 @@ class DashboardWidgetViewSet(viewsets.ModelViewSet):
     queryset = DashboardWidget.objects.all()
     serializer_class = DashboardWidgetSerializer
     permission_classes = [permissions.IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
     filterset_fields = ["widget_type", "is_active", "user"]
+    search_fields = ["name", "description"]
     ordering_fields = ["order", "name"]
     ordering = ["user", "order"]
 
@@ -139,8 +144,13 @@ class PipelineSnapshotViewSet(viewsets.ModelViewSet):
     queryset = PipelineSnapshot.objects.all()
     serializer_class = PipelineSnapshotSerializer
     permission_classes = [permissions.IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
     filterset_fields = ["date", "stage"]
+    search_fields = ["stage"]
     ordering_fields = ["date", "stage"]
     ordering = ["-date", "stage"]
 
@@ -149,8 +159,13 @@ class ContactEngagementViewSet(viewsets.ModelViewSet):
     queryset = ContactEngagement.objects.all()
     serializer_class = ContactEngagementSerializer
     permission_classes = [permissions.IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
     filterset_fields = ["date", "contact"]
+    search_fields = ["contact__first_name", "contact__last_name"]
     ordering_fields = ["date"]
     ordering = ["-date"]
 
@@ -159,8 +174,13 @@ class DealForecastViewSet(viewsets.ModelViewSet):
     queryset = DealForecast.objects.all()
     serializer_class = DealForecastSerializer
     permission_classes = [permissions.IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
     filterset_fields = ["forecast_date", "confidence_level"]
+    search_fields = ["deal__name", "notes"]
     ordering_fields = ["forecast_date"]
     ordering = ["-forecast_date"]
 
@@ -283,7 +303,11 @@ class MetricDataPointViewSet(viewsets.ModelViewSet):
     queryset = MetricDataPoint.objects.all()
     serializer_class = MetricDataPointSerializer
     permission_classes = [permissions.IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
     filterset_fields = ["metric__template", "date_recorded"]
     search_fields = ["metric__metric_name", "notes"]
     ordering_fields = ["date_recorded"]
@@ -376,7 +400,11 @@ class TableFieldViewSet(viewsets.ModelViewSet):
     queryset = TableField.objects.all()
     serializer_class = TableFieldSerializer
     permission_classes = [permissions.IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
     filterset_fields = ["table", "field_type", "is_primary", "is_required"]
     search_fields = ["name", "description"]
     ordering_fields = ["order", "name"]
