@@ -5,6 +5,7 @@ from django.core.validators import EmailValidator, URLValidator
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.text import slugify
 
 
 class TimeStampedModel(models.Model):
@@ -229,6 +230,10 @@ class Contact(TimeStampedModel):
     can_marketing_email = models.BooleanField(
         default=True,
         help_text="Allow bulk/marketing emails to this contact",
+    )
+    newsletter_subscribed = models.BooleanField(
+        default=False,
+        help_text="Subscribed to the newsletter; gates sending of scheduled newsletter and welcome series.",
     )
 
     # Social Media
@@ -1098,6 +1103,10 @@ class UserProfile(TimeStampedModel):
         blank=True,
         related_name="members",
     )
+    email_signature = models.TextField(
+        blank=True,
+        help_text="HTML signature for outgoing emails (per-user; falls back to EMAIL_SIGNATURE_HTML if empty)",
+    )
 
     class Meta:
         ordering = ["user__username"]
@@ -1143,3 +1152,567 @@ class Webhook(TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+
+class NewsletterPlan(TimeStampedModel):
+    """Annual newsletter plan with quarterly themes."""
+
+    year = models.IntegerField(help_text="Plan year (e.g. 2026)")
+    name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Optional plan name (e.g. 2026 Newsletter Content)",
+    )
+    quarter_themes = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Quarter themes, e.g. {"Q1": "Theme A", "Q2": "Theme B"}',
+    )
+
+    class Meta:
+        ordering = ["-year"]
+        unique_together = ["year"]
+        verbose_name = "Newsletter plan"
+        verbose_name_plural = "Newsletter plans"
+
+    def __str__(self):
+        return self.name or f"Newsletter Plan {self.year}"
+
+
+class NewsletterEdition(TimeStampedModel):
+    """Individual newsletter edition (week or day row in the annual plan)."""
+
+    STATUS_CHOICES = [
+        ("drafting", "Drafting"),
+        ("scheduled", "Scheduled"),
+        ("published", "Published"),
+        ("cancelled", "Cancelled"),
+    ]
+
+    DAY_OF_WEEK_CHOICES = [
+        ("Monday", "Monday"),
+        ("Tuesday", "Tuesday"),
+        ("Wednesday", "Wednesday"),
+        ("Thursday", "Thursday"),
+        ("Friday", "Friday"),
+        ("Saturday", "Saturday"),
+        ("Sunday", "Sunday"),
+    ]
+
+    plan = models.ForeignKey(
+        NewsletterPlan,
+        on_delete=models.CASCADE,
+        related_name="editions",
+    )
+    quarter = models.CharField(max_length=2, choices=[("Q1", "Q1"), ("Q2", "Q2"), ("Q3", "Q3"), ("Q4", "Q4")])
+    week_number = models.PositiveIntegerField(help_text="Week number (1-52)")
+    day_of_week = models.CharField(
+        max_length=10,
+        choices=DAY_OF_WEEK_CHOICES,
+        blank=True,
+        default="Monday",
+        help_text="Day of week; date is derived from week_number + day_of_week",
+    )
+    weekly_theme = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Weekly topic for this week",
+    )
+    notes = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="drafting",
+    )
+    subject = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Email subject line for this edition",
+    )
+    body_html = models.TextField(
+        blank=True,
+        help_text="HTML or plain text content of the newsletter to send",
+    )
+    sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When this edition was sent to subscribers; null means not yet sent",
+    )
+    url = models.URLField(
+        blank=True,
+        help_text="Link to published newsletter",
+    )
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="newsletter_editions",
+    )
+
+    class Meta:
+        ordering = ["plan", "quarter", "week_number", "day_of_week"]
+        verbose_name = "Newsletter edition"
+        verbose_name_plural = "Newsletter editions"
+
+    @staticmethod
+    def _quarter_from_date(d):
+        """Return Q1/Q2/Q3/Q4 from a date's month."""
+        if d is None:
+            return "Q1"
+        month = d.month
+        if month <= 3:
+            return "Q1"
+        if month <= 6:
+            return "Q2"
+        if month <= 9:
+            return "Q3"
+        return "Q4"
+
+    @property
+    def scheduled_date(self):
+        """Date derived from plan year, week_number, and day_of_week.
+        Week 1 = first Monday of the year (matches common editorial calendars, not ISO 8601).
+        """
+        from datetime import timedelta
+
+        year = self.plan.year if self.plan_id else timezone.now().year
+        jan1 = timezone.datetime(year, 1, 1).date()
+        # First Monday of year: weekday() 0=Mon, 6=Sun
+        days_until_monday = (7 - jan1.weekday()) % 7
+        first_monday = jan1 + timedelta(days=days_until_monday)
+        # Week N Monday = first_monday + (N-1)*7
+        week_monday = first_monday + timedelta(days=(self.week_number - 1) * 7)
+        day_name = self.day_of_week or "Monday"
+        day_offset = {
+            "Monday": 0,
+            "Tuesday": 1,
+            "Wednesday": 2,
+            "Thursday": 3,
+            "Friday": 4,
+            "Saturday": 5,
+            "Sunday": 6,
+        }.get(day_name, 0)
+        return week_monday + timedelta(days=day_offset)
+
+    def save(self, *args, **kwargs):
+        """Auto-set quarter from scheduled_date before save."""
+        if self.plan_id and self.week_number:
+            sd = self.scheduled_date
+            self.quarter = self._quarter_from_date(sd)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        label = self.weekly_theme or "(no theme)"
+        return f"{self.plan.year} {self.quarter} W{self.week_number} - {label}"
+
+    def get_absolute_url(self):
+        return reverse("crm:newsletter_edition_detail", kwargs={"pk": self.pk})
+
+
+class NewsletterAnalytics(TimeStampedModel):
+    """Per-edition analytics: subscribers, opens, ad revenue, etc."""
+
+    edition = models.OneToOneField(
+        NewsletterEdition,
+        on_delete=models.CASCADE,
+        related_name="analytics",
+    )
+    subscribers_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Subscriber count at send time",
+    )
+    sent_count = models.PositiveIntegerField(default=0)
+    opens_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Readers / unique opens",
+    )
+    clicks_count = models.PositiveIntegerField(default=0)
+    ad_revenue = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        help_text="Ad revenue from this edition",
+    )
+    unsubscribes_count = models.PositiveIntegerField(default=0)
+    bounces_count = models.PositiveIntegerField(default=0)
+    last_synced_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last sync from ESP (Mailchimp, Beehiiv, etc.)",
+    )
+
+    class Meta:
+        verbose_name = "Newsletter analytics"
+        verbose_name_plural = "Newsletter analytics"
+
+    def __str__(self):
+        return f"Analytics for {self.edition}"
+
+
+class NewsletterConversion(TimeStampedModel):
+    """Deal attribution: link a deal to a newsletter edition."""
+
+    ATTRIBUTION_CHOICES = [
+        ("lead", "Lead"),
+        ("opportunity", "Opportunity"),
+        ("closed_won", "Closed Won"),
+    ]
+
+    edition = models.ForeignKey(
+        NewsletterEdition,
+        on_delete=models.CASCADE,
+        related_name="conversions",
+    )
+    deal = models.ForeignKey(
+        Deal,
+        on_delete=models.CASCADE,
+        related_name="newsletter_conversions",
+    )
+    attribution_type = models.CharField(
+        max_length=20,
+        choices=ATTRIBUTION_CHOICES,
+        default="lead",
+    )
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Newsletter conversion"
+        verbose_name_plural = "Newsletter conversions"
+        unique_together = ["edition", "deal"]
+
+    def __str__(self):
+        return f"{self.edition} → {self.deal.name}"
+
+
+class WelcomeAutomation(TimeStampedModel):
+    """Welcome email sequence. New subscribers are assigned using weighted random among active automations (A/B tests)."""
+
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(
+        max_length=64,
+        unique=True,
+        blank=True,
+        help_text="Stable id; auto-generated from name when left blank.",
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Inactive automations are not assigned to new subscribers.",
+    )
+    enrollment_weight = models.PositiveIntegerField(
+        default=1,
+        help_text="Relative chance this automation is chosen among active ones (e.g. 1 and 1 → 50/50).",
+    )
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "Welcome automation"
+        verbose_name_plural = "Welcome automations"
+
+    def save(self, *args, **kwargs):
+        if not (self.slug or "").strip():
+            base = slugify(self.name)[:60] or "automation"
+            candidate = base
+            n = 1
+            while WelcomeAutomation.objects.filter(slug=candidate).exclude(pk=self.pk).exists():
+                n += 1
+                candidate = f"{base}-{n}"
+            self.slug = candidate
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
+class WelcomeEmail(TimeStampedModel):
+    """One step in a welcome automation."""
+
+    automation = models.ForeignKey(
+        WelcomeAutomation,
+        on_delete=models.CASCADE,
+        related_name="steps",
+    )
+    order = models.PositiveIntegerField(
+        help_text="Step order (1 = first at signup; then offset_hours after each prior send)",
+    )
+    subject = models.CharField(max_length=500)
+    body = models.TextField(
+        blank=True,
+        help_text="Plain text or HTML body for this welcome email",
+    )
+    offset_hours = models.PositiveIntegerField(
+        default=0,
+        help_text="Hours after previous step to send (0 = at signup for step 1)",
+    )
+
+    class Meta:
+        ordering = ["automation", "order"]
+        verbose_name = "Welcome email step"
+        verbose_name_plural = "Welcome email steps"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["automation", "order"],
+                name="crm_welcomeemail_automation_order_uniq",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.automation.name} step {self.order}: {self.subject}"
+
+
+class WelcomeEnrollment(TimeStampedModel):
+    """Enrollment of a contact in the welcome email series."""
+
+    STATUS_CHOICES = [
+        ("active", "Active"),
+        ("completed", "Completed"),
+        ("cancelled", "Cancelled"),
+    ]
+
+    contact = models.ForeignKey(
+        Contact,
+        on_delete=models.CASCADE,
+        related_name="welcome_enrollments",
+    )
+    automation = models.ForeignKey(
+        WelcomeAutomation,
+        on_delete=models.PROTECT,
+        related_name="enrollments",
+    )
+    enrolled_at = models.DateTimeField(default=timezone.now)
+    current_step_index = models.PositiveIntegerField(
+        default=0,
+        help_text="Zero-based index of the next step to send",
+    )
+    next_send_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When to send the next welcome email",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="active",
+    )
+
+    class Meta:
+        ordering = ["-enrolled_at"]
+        verbose_name = "Welcome enrollment"
+        verbose_name_plural = "Welcome enrollments"
+
+    def __str__(self):
+        return f"Welcome → {self.contact.full_name}"
+
+
+class NewsletterTemplate(TimeStampedModel):
+    """Reusable newsletter structure: named template with ordered sections (heading + Markdown body)."""
+
+    name = models.CharField(max_length=255, help_text="Template name for reuse")
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "Newsletter template"
+        verbose_name_plural = "Newsletter templates"
+
+    def __str__(self):
+        return self.name
+
+
+class NewsletterTemplateSection(TimeStampedModel):
+    """One section in a newsletter template: heading + Markdown body."""
+
+    template = models.ForeignKey(
+        NewsletterTemplate,
+        on_delete=models.CASCADE,
+        related_name="sections",
+    )
+    order = models.PositiveIntegerField(default=0, help_text="Display order")
+    heading = models.CharField(max_length=500)
+    body_markdown = models.TextField(
+        blank=True,
+        help_text="Markdown-formatted body for this section",
+    )
+
+    class Meta:
+        ordering = ["template", "order"]
+        verbose_name = "Newsletter template section"
+        verbose_name_plural = "Newsletter template sections"
+
+    def __str__(self):
+        return self.heading or f"Section {self.order}"
+
+
+class NewsletterIssue(TimeStampedModel):
+    """A single newsletter issue (structured with sections). Can be created from a template. When published, emails are sent and a blog post is created on kikodo.app."""
+
+    STATUS_CHOICES = [
+        ("draft", "Draft"),
+        ("scheduled", "Scheduled"),
+        ("published", "Published"),
+    ]
+
+    title = models.CharField(max_length=500, help_text="Issue title (and blog post title)")
+    slug = models.SlugField(
+        max_length=500,
+        unique=True,
+        help_text="URL slug for the blog post (e.g. newsletter-2025-01-15)",
+    )
+    subject = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Email subject line (defaults to title if empty)",
+    )
+    preheader = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Optional email preheader/preview text shown by many inboxes (hidden in the HTML body).",
+    )
+    meta_title = models.CharField(
+        max_length=60,
+        blank=True,
+        help_text="Optional meta title for blog (max 60 chars)",
+    )
+    meta_description = models.CharField(
+        max_length=320,
+        blank=True,
+        help_text="Optional meta description for blog (max 320 chars)",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="draft",
+    )
+    scheduled_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Optional scheduled date (for display/filtering)",
+    )
+    sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When newsletter emails were sent",
+    )
+    blog_published_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the post was published on www.kikodo.app",
+    )
+    created_from_template = models.ForeignKey(
+        NewsletterTemplate,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="issues_created",
+    )
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="newsletter_issues",
+    )
+    edition = models.ForeignKey(
+        NewsletterEdition,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="issues",
+        help_text="Link to the plan edition this issue corresponds to (if created from plan).",
+    )
+    divider_image_url = models.URLField(
+        max_length=500,
+        blank=True,
+        help_text="Optional image URL to show between sections. If empty, a simple line divider is used.",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Newsletter issue"
+        verbose_name_plural = "Newsletter issues"
+
+    def __str__(self):
+        return self.title or self.slug
+
+    def get_absolute_url(self):
+        return reverse("crm:newsletter_issue_detail", kwargs={"pk": self.pk})
+
+    def render_body_html(self):
+        """Render all sections to a single HTML string (Markdown converted, sections wrapped with headings).
+        Between sections: if divider_image_url is set, insert that image; otherwise use HTML hr divider.
+        No divider between the first and second sections (e.g. banner + intro flow together).
+        """
+        import markdown
+        from html import escape
+        import re
+
+        sections = list(self.sections.order_by("order"))
+        parts = []
+        for i, sec in enumerate(sections):
+            html = markdown.markdown(sec.body_markdown or "", extensions=["nl2br"])
+            heading_html = f"<h2>{sec.heading}</h2>\n" if sec.heading else ""
+            block = f"{heading_html}{html}"
+            if i == 0:
+                block = f'<div class="newsletter-section-first">{block}</div>'
+            parts.append(block)
+            # Skip divider after first section only (between section 1 and 2)
+            if i < len(sections) - 1 and i != 0:
+                if self.divider_image_url:
+                    url = escape(self.divider_image_url)
+                    parts.append(
+                        f'<div class="newsletter-divider">'
+                        f'<img src="{url}" alt="" style="max-width:100%;height:auto;display:block;" />'
+                        f'</div>'
+                    )
+                else:
+                    parts.append('<hr class="newsletter-divider-hr" />')
+        full_html = "\n\n".join(parts) if parts else ""
+
+        # Email clients (and some ESPs) sometimes rewrite images to full width.
+        # Force the Compliance Unlock logo banner to a reasonable fixed display width
+        # (can shrink on mobile, but won't scale up to the container width).
+        if full_html:
+            def _force_logo_banner(match: re.Match) -> str:
+                src = match.group("src")
+                alt = match.group("alt") or "The Compliance Unlock"
+                # 420px keeps the banner from looking "full width" in a 600px email container.
+                # Use !important to beat common client rewriters.
+                return (
+                    f'<img src="{src}" alt="{alt}" width="420" '
+                    f'style="width:420px !important; max-width:100% !important; '
+                    f'height:auto !important; display:block; margin:0 auto;" />'
+                )
+
+            full_html = re.sub(
+                r"""<img\b[^>]*\bsrc=(?P<q>["'])(?P<src>[^"']*compliance-unlock-logo\.png)(?P=q)[^>]*?(?:\balt=(?P<aq>["'])(?P<alt>[^"']*)(?P=aq))?[^>]*>""",
+                _force_logo_banner,
+                full_html,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+
+        return full_html
+
+
+class NewsletterIssueSection(TimeStampedModel):
+    """One section in a newsletter issue: heading + Markdown body."""
+
+    issue = models.ForeignKey(
+        NewsletterIssue,
+        on_delete=models.CASCADE,
+        related_name="sections",
+    )
+    order = models.PositiveIntegerField(default=0, help_text="Display order")
+    heading = models.CharField(max_length=500, blank=True)
+    body_markdown = models.TextField(
+        blank=True,
+        help_text="Markdown-formatted body for this section",
+    )
+
+    class Meta:
+        ordering = ["issue", "order"]
+        verbose_name = "Newsletter issue section"
+        verbose_name_plural = "Newsletter issue sections"
+
+    def __str__(self):
+        return self.heading or f"Section {self.order}"
