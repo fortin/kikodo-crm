@@ -1,0 +1,147 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ issue.title }} - Kikodo CRM{% endblock %}
+{% block page_title %}{{ issue.title|default:issue.slug }}{% endblock %}
+
+{% block page_actions %}
+<a href="{% url 'crm:newsletter_issue_edit' issue.pk %}" class="btn btn-outline-primary me-2">
+  <i class="fas fa-edit"></i> Edit
+</a>
+<a href="{% url 'crm:newsletter_issue_preview' issue.pk %}" class="btn btn-outline-secondary me-2" target="_blank" rel="noopener">
+  <i class="fas fa-eye"></i> Preview
+</a>
+{% if issue.status != 'published' %}
+<form method="post" action="{% url 'crm:newsletter_issue_publish' issue.pk %}" class="d-inline" id="newsletter-issue-publish-form">
+  {% csrf_token %}
+  <button type="submit" class="btn btn-success">
+    <i class="fas fa-paper-plane"></i> Publish (send emails + post to blog)
+  </button>
+</form>
+{% endif %}
+<form method="post" action="{% url 'crm:newsletter_issue_test' issue.pk %}" class="d-inline ms-2" id="newsletter-issue-test-form">
+  {% csrf_token %}
+  <button type="submit" class="btn btn-outline-primary">
+    <i class="fas fa-flask"></i> Test Email
+  </button>
+</form>
+<a href="{% url 'crm:newsletter_issue_list' %}" class="btn btn-outline-secondary ms-2">
+  <i class="fas fa-list"></i> Back to issues
+</a>
+<a href="{% url 'crm:newsletter_issue_delete' issue.pk %}" class="btn btn-outline-danger ms-2">Delete</a>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span>
+      <span class="badge {% if issue.status == 'published' %}bg-success{% elif issue.status == 'scheduled' %}bg-info{% else %}bg-secondary{% endif %}">
+        {{ issue.get_status_display }}
+      </span>
+      {% if issue.created_from_template %}
+      <span class="text-muted small">From template: {{ issue.created_from_template.name }}</span>
+      {% endif %}
+      {% if issue.edition %}
+      <span class="text-muted small">Plan: <a href="{% url 'crm:newsletter_plan_year' year=issue.edition.plan.year %}?quarter={{ issue.edition.quarter }}">{{ issue.edition.plan.year }} {{ issue.edition.quarter }} W{{ issue.edition.week_number }}</a></span>
+      {% endif %}
+    </span>
+    <span class="text-muted small">
+      {% if issue.sent_at %}Emails sent {{ issue.sent_at|date:"Y-m-d H:i" }}{% endif %}
+      {% if issue.blog_published_at %} · Blog {{ issue.blog_published_at|date:"Y-m-d H:i" }}{% endif %}
+    </span>
+  </div>
+  <div class="card-body">
+    <dl class="row mb-0">
+      <dt class="col-sm-2">Title</dt>
+      <dd class="col-sm-10">{{ issue.title|default:"—" }}</dd>
+      <dt class="col-sm-2">Slug</dt>
+      <dd class="col-sm-10"><code>{{ issue.slug }}</code></dd>
+      <dt class="col-sm-2">Email subject</dt>
+      <dd class="col-sm-10">{{ issue.subject|default:issue.title|default:"—" }}</dd>
+      {% if issue.meta_title or issue.meta_description %}
+      <dt class="col-sm-2">Meta (blog)</dt>
+      <dd class="col-sm-10">{{ issue.meta_title|default:"" }} {{ issue.meta_description|default:"" }}</dd>
+      {% endif %}
+      <dt class="col-sm-2">Scheduled date</dt>
+      <dd class="col-sm-10">{{ issue.scheduled_date|default:"—" }}</dd>
+    </dl>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Sections (preview)</div>
+  <div class="card-body">
+    {% for sec in issue.sections.all %}
+    <div class="mb-4">
+      <h5>{{ sec.heading }}</h5>
+      <div class="text-muted small">Markdown:</div>
+      <pre class="bg-light p-2 rounded small">{{ sec.body_markdown|default:""|truncatewords:50 }}</pre>
+    </div>
+    {% empty %}
+    <p class="text-muted">No sections. <a href="{% url 'crm:newsletter_issue_edit' issue.pk %}">Edit</a> to add sections.</p>
+    {% endfor %}
+  </div>
+</div>
+{% if issue.status != 'published' %}
+<!-- Publish/Test overlay -->
+<div id="newsletter-issue-action-overlay" class="position-fixed top-0 start-0 w-100 h-100 d-none" style="z-index: 1050; background: rgba(255,255,255,0.85); align-items: center; justify-content: center;">
+  <div class="text-center">
+    <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+      <span class="visually-hidden">Loading…</span>
+    </div>
+    <p id="newsletter-issue-action-overlay-text" class="text-muted mb-0">Working…</p>
+    <p class="small text-muted mt-1">Please wait.</p>
+  </div>
+</div>
+<script>
+(function() {
+  var publishForm = document.getElementById('newsletter-issue-publish-form');
+  var testForm = document.getElementById('newsletter-issue-test-form');
+  var overlay = document.getElementById('newsletter-issue-action-overlay');
+  var overlayText = document.getElementById('newsletter-issue-action-overlay-text');
+  if (!overlay) return;
+
+  function disableAllInteractive() {
+    // Disable submit buttons and standard buttons.
+    document.querySelectorAll('button').forEach(function(btn) {
+      btn.disabled = true;
+    });
+    // Disable inputs (but not hidden fields — disabled inputs are omitted from POST and would drop CSRF).
+    document.querySelectorAll('input, select, textarea').forEach(function(el) {
+      var type = (el.getAttribute('type') || '').toLowerCase();
+      if (type === 'hidden') return;
+      if (el.name === 'csrfmiddlewaretoken') return;
+      el.disabled = true;
+    });
+    // Prevent clicking other links/buttons.
+    document.querySelectorAll('a, button').forEach(function(el) {
+      if (el.tagName && el.tagName.toLowerCase() === 'a') {
+        el.style.pointerEvents = 'none';
+      }
+    });
+  }
+
+  function bind(form, actionLabel) {
+    if (!form) return;
+    form.addEventListener('submit', function(e) {
+      if (form.getAttribute('data-newsletter-issue-action-submitting') === '1') return;
+      e.preventDefault();
+      if (overlayText) overlayText.textContent = actionLabel || 'Working…';
+      overlay.classList.remove('d-none');
+      overlay.classList.add('d-flex');
+      disableAllInteractive();
+      form.setAttribute('data-newsletter-issue-action-submitting', '1');
+      // Defer actual submission so the overlay can paint before navigation.
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          form.submit();
+        });
+      });
+    });
+  }
+
+  bind(publishForm, 'Publishing…');
+  bind(testForm, 'Sending test…');
+})();
+</script>
+{% endif %}
+{% endblock %}

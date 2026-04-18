@@ -1,0 +1,140 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+{% load crm_extras %}
+
+{% block title %}Newsletter Plan {{ plan.year }} - Kikodo CRM{% endblock %}
+{% block page_title %}Newsletter Plan {{ plan.year }}{% endblock %}
+
+{% block page_actions %}
+<a href="{% url 'crm:newsletter_issue_list' %}" class="btn btn-primary me-2">
+  <i class="fas fa-file-alt"></i> Issues
+</a>
+<a href="{% url 'crm:welcome_automation_list' %}" class="btn btn-outline-secondary me-2">
+  <i class="fas fa-magic"></i> Welcome Automation
+</a>
+<a href="{% url 'crm:newsletter_analytics' %}" class="btn btn-outline-primary me-2">
+  <i class="fas fa-chart-bar"></i> Analytics
+</a>
+{% if prev_year >= 2020 %}
+<a href="{% url 'crm:newsletter_plan_year' year=prev_year %}" class="btn btn-outline-secondary me-2">{{ prev_year }}</a>
+{% endif %}
+<a href="{% url 'crm:newsletter_plan_year' year=next_year %}" class="btn btn-outline-secondary">{{ next_year }}</a>
+{% endblock %}
+
+{% block content %}
+<p class="text-muted mb-3">
+  <a href="{% url 'crm:newsletter_issue_list' %}"><i class="fas fa-file-alt"></i> Issues</a> — full newsletter content (sections, subject, blog) is edited under <strong>Edit issue</strong>.
+  Row fields + <strong>Save row</strong> update the plan slot; <strong>Edition detail</strong> shows analytics and legacy edition-only email fields if you use them.
+</p>
+
+<ul class="nav nav-tabs mb-3" role="tablist">
+  {% for q in quarters %}
+  <li class="nav-item" role="presentation">
+    <a class="nav-link {% if active_quarter == q %}active{% endif %}" href="?quarter={{ q }}" role="tab">
+      {{ q }}: {{ quarter_themes|get_item:q|default:"[INSERT THEME HERE]" }}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span>{{ active_quarter }}: {{ quarter_themes|get_item:active_quarter|default:"[INSERT THEME HERE]" }}</span>
+    <form method="post" class="d-inline-flex gap-2 align-items-center">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="update_quarter_theme">
+      <input type="hidden" name="quarter" value="{{ active_quarter }}">
+      <input type="text" name="theme" class="form-control form-control-sm" placeholder="Quarter theme" value="{{ quarter_themes|get_item:active_quarter }}" style="min-width: 200px;">
+      <button type="submit" class="btn btn-sm btn-outline-primary">Update theme</button>
+    </form>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Week</th>
+            <th>Start Date</th>
+            <th>Day of Week</th>
+            <th>Weekly Topic</th>
+            <th>Notes</th>
+            <th>Status</th>
+            <th>URL</th>
+            <th>Issue</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for edition in editions %}
+          <tr>
+            <form method="post" action="?quarter={{ active_quarter }}">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="update_edition">
+              <input type="hidden" name="edition_id" value="{{ edition.pk }}">
+              <td>
+                <input type="number" name="week_number" class="form-control form-control-sm" value="{{ edition.week_number }}" min="1" max="52" style="width: 4em;">
+              </td>
+              <td>{{ edition.scheduled_date|date:"Y-m-d"|default:"—" }}</td>
+              <td>
+                <select name="day_of_week" class="form-select form-select-sm" style="width: auto;">
+                  {% for val, label in day_of_week_choices %}
+                  <option value="{{ val }}" {% if edition.day_of_week == val %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td>
+                <input type="text" name="weekly_theme" class="form-control form-control-sm" value="{{ edition.weekly_theme|default:'' }}" placeholder="Weekly topic">
+              </td>
+              <td>
+                <input type="text" name="notes" class="form-control form-control-sm" value="{{ edition.notes|default:'' }}" placeholder="Notes">
+              </td>
+              <td>
+                <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                  <option value="drafting" {% if edition.status == 'drafting' %}selected{% endif %}>Drafting</option>
+                  <option value="scheduled" {% if edition.status == 'scheduled' %}selected{% endif %}>Scheduled</option>
+                  <option value="published" {% if edition.status == 'published' %}selected{% endif %}>Published</option>
+                  <option value="cancelled" {% if edition.status == 'cancelled' %}selected{% endif %}>Cancelled</option>
+                </select>
+              </td>
+              <td>
+                <input type="url" name="url" class="form-control form-control-sm" value="{{ edition.url|default:'' }}" placeholder="https://...">
+              </td>
+              <td>
+                {% for issue in edition.issues.all %}
+                  {% if forloop.first %}
+                  <a href="{% url 'crm:newsletter_issue_detail' issue.pk %}" class="btn btn-sm btn-outline-primary">View issue</a>
+                  <a href="{% url 'crm:newsletter_issue_edit' issue.pk %}" class="btn btn-sm btn-link">Edit issue</a>
+                  {% endif %}
+                {% empty %}
+                <a href="{% url 'crm:newsletter_issue_create' %}?from_edition={{ edition.pk }}" class="btn btn-sm btn-success">Create issue</a>
+                {% endfor %}
+              </td>
+              <td>
+                <button type="submit" class="btn btn-sm btn-outline-primary">Save row</button>
+                <a href="{% url 'crm:newsletter_edition_detail' edition.pk %}" class="btn btn-sm btn-link">Edition detail</a>
+                <a href="{% url 'crm:newsletter_edition_delete' edition.pk %}" class="btn btn-sm btn-link text-danger">Delete</a>
+              </td>
+            </form>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="9" class="text-center text-muted py-4">No editions yet. Add one below.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="p-3 border-top">
+      <h6 class="mb-2">Add edition</h6>
+      <form method="post" action="?quarter={{ active_quarter }}">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_edition">
+        {{ edition_form|crispy }}
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-plus"></i> Add edition
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

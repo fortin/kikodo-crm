@@ -1,21 +1,15 @@
 """
-Fetch a URL, extract main text, and call Ollama to populate Signal fields (Signals-Grid style).
-Uses OLLAMA_BASE_URL (default http://localhost:11434) and OLLAMA_MODEL (default mistral-nemo:latest; set to a model you have, e.g. from ollama list).
+Fetch a URL, extract main text, and call the configured LLM to populate Signal fields.
+
+Uses the AI backend configured via AI_BACKEND / ANTHROPIC_API_KEY (Claude) or
+OLLAMA_BASE_URL / OLLAMA_MODEL (Ollama). See crm/ai_connector.py.
 """
 
 import json
 import re
 from datetime import date
 
-from django.conf import settings
-
-
-def get_ollama_base_url():
-    return getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
-
-
-def get_ollama_model():
-    return getattr(settings, "OLLAMA_MODEL", "mistral-nemo:latest")
+from .ai_connector import call_llm
 
 
 def fetch_url_text(url: str, max_chars: int = 30000) -> str:
@@ -53,33 +47,6 @@ def fetch_url_text(url: str, max_chars: int = 30000) -> str:
         text = text[:max_chars] + "\n[... truncated]"
     return text
 
-
-def call_ollama(
-    prompt: str, model: str | None = None, base_url: str | None = None
-) -> str:
-    """Call Ollama via HTTP using /api/generate only.
-    Returns full response text (no streaming). Retries with 127.0.0.1 if localhost returns 404.
-    """
-    import requests
-
-    base_url = (base_url or get_ollama_base_url()).rstrip("/")
-    model = model or get_ollama_model()
-
-    url = f"{base_url}/api/generate"
-    payload = {"model": model, "prompt": prompt, "stream": False}
-
-    def _post(u):
-        r = requests.post(u, json=payload, timeout=120)
-        return r
-
-    resp = _post(url)
-    # Some processes (e.g. Django runserver in a different context) get 404 on localhost; retry with 127.0.0.1
-    if resp.status_code == 404 and "localhost" in url:
-        alt_url = url.replace("localhost", "127.0.0.1", 1)
-        resp = _post(alt_url)
-    resp.raise_for_status()
-    data = resp.json()
-    return data.get("response", "")
 
 
 def parse_llm_signal_response(raw: str, source_url: str) -> dict:
@@ -186,7 +153,7 @@ Page content:
 
 Return only the JSON object, no other text."""
 
-    raw = call_ollama(prompt, model=model)
+    raw = call_llm(prompt, model=model)
     parsed = parse_llm_signal_response(raw, source_url)
     parsed["week"] = parsed["week"] or week
     parsed["source_url"] = source_url
@@ -227,7 +194,7 @@ Page content:
 
 Return only the JSON object, no other text."""
 
-    raw = call_ollama(prompt, model=model)
+    raw = call_llm(prompt, model=model)
     parsed = parse_llm_signal_response(raw, source_url)
     parsed["week"] = parsed["week"] or week
     parsed["source_url"] = source_url
@@ -257,7 +224,7 @@ Description: {description or "General outreach"}
 
 Return only the JSON array."""
 
-    raw = call_ollama(prompt, model=model)
+    raw = call_llm(prompt, model=model)
     out = []
     json_match = re.search(r"\[\s*\{[\s\S]*\}\s*\]", raw)
     if json_match:

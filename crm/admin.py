@@ -12,6 +12,10 @@ from .models import (
     ContactTag,
     Deal,
     DealTag,
+    NewsletterAnalytics,
+    NewsletterConversion,
+    NewsletterEdition,
+    NewsletterPlan,
     Pipeline,
     PipelineStage,
     Signal,
@@ -19,6 +23,13 @@ from .models import (
     Team,
     UserProfile,
     Webhook,
+    WelcomeAutomation,
+    WelcomeEmail,
+    WelcomeEnrollment,
+    NewsletterTemplate,
+    NewsletterTemplateSection,
+    NewsletterIssue,
+    NewsletterIssueSection,
 )
 
 
@@ -64,13 +75,14 @@ class ContactAdmin(admin.ModelAdmin):
         "phone",
         "company",
         "status",
+        "newsletter_subscribed",
         "owner",
         "is_active",
         "created_at",
     ]
-    list_filter = ["status", "is_active", "owner", "company", "created_at"]
+    list_filter = ["status", "is_active", "newsletter_subscribed", "owner", "company", "created_at"]
     search_fields = ["first_name", "last_name", "email", "phone", "company__name"]
-    list_editable = ["status", "is_active"]
+    list_editable = ["status", "is_active", "newsletter_subscribed"]
     readonly_fields = ["created_at", "updated_at"]
 
     fieldsets = (
@@ -94,7 +106,7 @@ class ContactAdmin(admin.ModelAdmin):
         ("Address", {"fields": ("address", "city", "state", "country", "postal_code")}),
         (
             "CRM Information",
-            {"fields": ("status", "source", "notes", "owner", "is_active")},
+            {"fields": ("status", "source", "notes", "owner", "is_active", "newsletter_subscribed")},
         ),
         (
             "Social Media",
@@ -299,6 +311,16 @@ class UserProfileAdmin(admin.ModelAdmin):
     list_display = ["user", "team"]
     list_filter = ["team"]
     search_fields = ["user__username", "user__email"]
+    fieldsets = (
+        (None, {"fields": ("user", "team")}),
+        (
+            "Email",
+            {
+                "fields": ("email_signature",),
+                "description": "HTML signature for outgoing emails. Falls back to EMAIL_SIGNATURE_HTML if empty.",
+            },
+        ),
+    )
 
 
 @admin.register(Webhook)
@@ -309,3 +331,134 @@ class WebhookAdmin(admin.ModelAdmin):
     search_fields = ["name", "url"]
     filter_horizontal = []
     readonly_fields = ["created_at", "updated_at"]
+
+
+class NewsletterEditionInline(admin.TabularInline):
+    model = NewsletterEdition
+    extra = 0
+    fields = ["quarter", "week_number", "day_of_week", "weekly_theme", "notes", "status", "url"]
+
+
+@admin.register(NewsletterPlan)
+class NewsletterPlanAdmin(admin.ModelAdmin):
+    list_display = ["year", "name", "created_at"]
+    search_fields = ["name"]
+    list_editable = ["name"]
+    readonly_fields = ["created_at", "updated_at"]
+    inlines = [NewsletterEditionInline]
+
+
+class NewsletterAnalyticsInline(admin.StackedInline):
+    model = NewsletterAnalytics
+    extra = 0
+
+
+class NewsletterConversionInline(admin.TabularInline):
+    model = NewsletterConversion
+    extra = 0
+
+
+@admin.register(NewsletterEdition)
+class NewsletterEditionAdmin(admin.ModelAdmin):
+    list_display = ["plan", "quarter", "week_number", "day_of_week", "weekly_theme", "status", "sent_at", "owner"]
+    list_filter = ["plan", "quarter", "status"]
+    search_fields = ["weekly_theme", "subject", "notes"]
+    list_editable = ["status"]
+    readonly_fields = ["created_at", "updated_at", "sent_at"]
+    inlines = [NewsletterAnalyticsInline, NewsletterConversionInline]
+
+
+@admin.register(NewsletterAnalytics)
+class NewsletterAnalyticsAdmin(admin.ModelAdmin):
+    list_display = ["edition", "subscribers_count", "sent_count", "opens_count", "clicks_count", "ad_revenue"]
+    list_filter = ["edition__plan"]
+    readonly_fields = ["created_at", "updated_at"]
+
+
+@admin.register(NewsletterConversion)
+class NewsletterConversionAdmin(admin.ModelAdmin):
+    list_display = ["edition", "deal", "attribution_type", "created_at"]
+    list_filter = ["attribution_type", "edition__plan"]
+    search_fields = ["deal__name", "notes"]
+    readonly_fields = ["created_at", "updated_at"]
+
+
+class WelcomeEnrollmentInline(admin.TabularInline):
+    model = WelcomeEnrollment
+    extra = 0
+    readonly_fields = ["enrolled_at", "next_send_at"]
+    show_change_link = True
+
+
+class WelcomeEmailInline(admin.TabularInline):
+    model = WelcomeEmail
+    extra = 0
+    ordering = ["order"]
+
+
+@admin.register(WelcomeAutomation)
+class WelcomeAutomationAdmin(admin.ModelAdmin):
+    list_display = [
+        "name",
+        "slug",
+        "is_active",
+        "enrollment_weight",
+        "updated_at",
+    ]
+    list_filter = ["is_active"]
+    search_fields = ["name", "slug"]
+    inlines = [WelcomeEmailInline]
+    readonly_fields = ["created_at", "updated_at"]
+
+
+@admin.register(WelcomeEmail)
+class WelcomeEmailAdmin(admin.ModelAdmin):
+    list_display = ["automation", "order", "subject", "offset_hours", "updated_at"]
+    list_filter = ["automation"]
+    list_editable = ["subject", "offset_hours"]
+    ordering = ["automation", "order"]
+    readonly_fields = ["created_at", "updated_at"]
+
+
+@admin.register(WelcomeEnrollment)
+class WelcomeEnrollmentAdmin(admin.ModelAdmin):
+    list_display = [
+        "contact",
+        "automation",
+        "enrolled_at",
+        "current_step_index",
+        "next_send_at",
+        "status",
+    ]
+    list_filter = ["status", "automation"]
+    search_fields = ["contact__first_name", "contact__last_name", "contact__email"]
+    readonly_fields = ["created_at", "updated_at"]
+
+
+class NewsletterTemplateSectionInline(admin.TabularInline):
+    model = NewsletterTemplateSection
+    extra = 0
+    ordering = ["order"]
+
+
+@admin.register(NewsletterTemplate)
+class NewsletterTemplateAdmin(admin.ModelAdmin):
+    list_display = ["name", "created_at"]
+    search_fields = ["name"]
+    inlines = [NewsletterTemplateSectionInline]
+    readonly_fields = ["created_at", "updated_at"]
+
+
+class NewsletterIssueSectionInline(admin.TabularInline):
+    model = NewsletterIssueSection
+    extra = 0
+    ordering = ["order"]
+
+
+@admin.register(NewsletterIssue)
+class NewsletterIssueAdmin(admin.ModelAdmin):
+    list_display = ["title", "slug", "status", "sent_at", "blog_published_at", "owner", "created_at"]
+    list_filter = ["status"]
+    search_fields = ["title", "slug"]
+    inlines = [NewsletterIssueSectionInline]
+    readonly_fields = ["created_at", "updated_at", "sent_at", "blog_published_at"]

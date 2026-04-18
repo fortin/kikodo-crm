@@ -19,7 +19,6 @@
     />
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
     <style>
       :root {
         --airtable-blue: #18b0ff;
@@ -46,6 +45,9 @@
         color: var(--airtable-gray-800);
         line-height: 1.5;
       }
+
+      .activity-description p { margin: 0 0 0.25em 0; }
+      .activity-description ul, .activity-description ol { margin: 0; padding-left: 1.25em; }
 
       .sidebar {
         min-height: 100vh;
@@ -404,6 +406,14 @@
               </li>
               <li class="nav-item">
                 <a
+                  class="nav-link {% if 'newsletter_plan' in request.resolver_match.url_name or 'newsletter_edition' in request.resolver_match.url_name or 'newsletter_analytics' in request.resolver_match.url_name or 'welcome_automation' in request.resolver_match.url_name or 'welcome_step' in request.resolver_match.url_name %}active{% endif %}"
+                  href="{% url 'crm:newsletter_plan' %}"
+                >
+                  <i class="fas fa-newspaper"></i> Newsletters
+                </a>
+              </li>
+              <li class="nav-item">
+                <a
                   class="nav-link {% if 'analytics' in request.resolver_match.url_name %}active{% endif %}"
                   href="{% url 'analytics:dashboard' %}"
                 >
@@ -487,5 +497,6 @@
     </script>
 
     {% block extra_js %}{% endblock %}
+    {% include 'crm/ai_chat_widget.html' %}
   </body>
 </html>

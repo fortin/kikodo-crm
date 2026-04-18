@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block title %}Delete welcome step - Kikodo CRM{% endblock %}
+{% block page_title %}Delete welcome step{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <p>Delete <strong>step {{ step.order }}</strong> (<em>{{ step.subject }}</em>) from {{ automation.name }}? This cannot be undone.</p>
+    <form method="post" action="{% url 'crm:welcome_step_delete' automation_pk=automation.pk pk=step.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-danger">Delete</button>
+      <a href="{% url 'crm:welcome_automation_detail' automation.pk %}" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

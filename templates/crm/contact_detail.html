@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load crm_extras %}
 
 {% block title %}{{ contact.full_name }} - Contact - Kikodo CRM{% endblock %}
 {% block page_title %}Contact: {{ contact.full_name }}{% endblock %}
@@ -7,9 +8,19 @@
 <a href="{% url 'crm:contact_edit' contact.pk %}" class="btn btn-outline-primary me-2">
   <i class="fas fa-edit"></i> Edit
 </a>
+<button class="btn btn-outline-primary me-2"
+        onclick="aiAction('{% url 'crm:ai_enrich_contact' contact.pk %}', {button: this, title: 'Enrich Contact'})"
+        title="Use AI to fill missing company/job title from headline, bio, notes, or LinkedIn">
+  <i class="fas fa-magic"></i> Enrich
+</button>
 <a href="{% url 'crm:contact_enroll_sequence' contact.pk %}" class="btn btn-outline-primary me-2">
   <i class="fas fa-stream"></i> Enroll in sequence
 </a>
+{% if contact.email and contact.can_email_outbound %}
+<a href="{% url 'crm:contact_send_email' contact.pk %}" class="btn btn-outline-primary me-2">
+  <i class="fas fa-envelope"></i> Send Email
+</a>
+{% endif %}
 <a href="{% url 'crm:activity_create' %}?contact={{ contact.pk }}" class="btn btn-primary">
   <i class="fas fa-plus"></i> Log Activity
 </a>
@@ -184,7 +195,7 @@
                 {% endif %}
               </div>
               {% if activity.description %}
-              <div class="small mt-1">{{ activity.description|linebreaksbr }}</div>
+              <div class="small mt-1 activity-description">{{ activity.description|markdown_to_html }}</div>
               {% endif %}
               {% if activity.thread %}
               <div class="small text-muted mt-1">
@@ -220,7 +231,7 @@
                 {% endif %}
               </div>
               {% if activity.description %}
-              <div class="small mt-1">{{ activity.description|linebreaksbr }}</div>
+              <div class="small mt-1 activity-description">{{ activity.description|markdown_to_html }}</div>
               {% endif %}
               {% if activity.link %}
               <div class="small mt-1">

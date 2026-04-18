@@ -1,5 +1,6 @@
 from django import forms
 from django.forms import inlineformset_factory
+from django.forms.models import BaseInlineFormSet
 
 from .models import (
     Activity,
@@ -7,6 +8,13 @@ from .models import (
     Company,
     Contact,
     Deal,
+    NewsletterAnalytics,
+    NewsletterEdition,
+    NewsletterIssue,
+    NewsletterIssueSection,
+    NewsletterPlan,
+    NewsletterTemplate,
+    NewsletterTemplateSection,
     OperatingArea,
     PainSignal,
     PainType,
@@ -15,6 +23,8 @@ from .models import (
     Sequence,
     SequenceStep,
     Signal,
+    WelcomeAutomation,
+    WelcomeEmail,
 )
 
 
@@ -217,6 +227,56 @@ class ActivityForm(forms.ModelForm):
         )
 
 
+class SendEmailForm(forms.Form):
+    """Form for composing and sending outbound emails to contacts."""
+
+    subject = forms.CharField(
+        max_length=255,
+        required=True,
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Email subject"}),
+    )
+    body = forms.CharField(
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 10,
+                "placeholder": "Write your message in Markdown...",
+            }
+        ),
+        required=True,
+    )
+    schedule_at = forms.DateTimeField(
+        required=False,
+        widget=forms.DateTimeInput(
+            attrs={"class": "form-control", "type": "datetime-local"},
+            format="%Y-%m-%dT%H:%M",
+        ),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["schedule_at"].input_formats = [
+            "%Y-%m-%dT%H:%M",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d",
+        ]
+
+
+class WelcomeAutomationForm(forms.ModelForm):
+    class Meta:
+        model = WelcomeAutomation
+        fields = ["name", "is_active", "enrollment_weight"]
+
+
+class WelcomeEmailForm(forms.ModelForm):
+    class Meta:
+        model = WelcomeEmail
+        fields = ["order", "offset_hours", "subject", "body"]
+        widgets = {
+            "body": forms.Textarea(attrs={"rows": 10}),
+        }
+
+
 class SequenceForm(forms.ModelForm):
     """Form for creating/editing messaging sequences."""
 
@@ -314,9 +374,13 @@ class SignalCreateForm(forms.Form):
 
 
 class SignalPasteForm(forms.Form):
-    """Form shown when URL fetch fails (e.g. 403): paste page content, LLM fills fields."""
+    """Form shown when URL fetch fails (e.g. 403) or from direct "Paste page content" link."""
 
-    source_url = forms.URLField(max_length=2048, widget=forms.HiddenInput())
+    source_url = forms.URLField(
+        max_length=2048,
+        required=False,
+        widget=forms.URLInput(attrs={"class": "form-control", "placeholder": "https://… (optional)"}),
+    )
     pasted_content = forms.CharField(
         label="Pasted page content",
         widget=forms.Textarea(
@@ -355,3 +419,195 @@ class SignalForm(forms.ModelForm):
             "competitors_notes": forms.Textarea(attrs={"rows": 4}),
             "date_logged": forms.DateInput(attrs={"type": "date"}),
         }
+
+
+class NewsletterPlanForm(forms.ModelForm):
+    """Form for creating and editing newsletter plans."""
+
+    class Meta:
+        model = NewsletterPlan
+        fields = ["year", "name", "quarter_themes"]
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "e.g. 2026 Newsletter Content"}),
+            "quarter_themes": forms.HiddenInput(),
+        }
+
+
+class NewsletterEditionForm(forms.ModelForm):
+    """Form for creating and editing newsletter editions."""
+
+    class Meta:
+        model = NewsletterEdition
+        fields = [
+            "plan",
+            "quarter",
+            "week_number",
+            "day_of_week",
+            "weekly_theme",
+            "notes",
+            "status",
+            "subject",
+            "body_html",
+            "url",
+        ]
+        widgets = {
+            "weekly_theme": forms.TextInput(attrs={"placeholder": "Weekly topic"}),
+            "notes": forms.Textarea(attrs={"rows": 2}),
+            "subject": forms.TextInput(attrs={"placeholder": "Email subject line"}),
+            "body_html": forms.Textarea(attrs={"rows": 12, "placeholder": "HTML or plain text content to send"}),
+            "url": forms.URLInput(attrs={"placeholder": "https://..."}),
+        }
+
+
+class NewsletterAnalyticsForm(forms.ModelForm):
+    """Form for editing newsletter analytics."""
+
+    class Meta:
+        model = NewsletterAnalytics
+        fields = [
+            "subscribers_count",
+            "sent_count",
+            "opens_count",
+            "clicks_count",
+            "ad_revenue",
+            "unsubscribes_count",
+            "bounces_count",
+        ]
+
+
+class NewsletterTemplateForm(forms.ModelForm):
+    """Form for creating and editing newsletter templates (name only; sections in formset)."""
+
+    class Meta:
+        model = NewsletterTemplate
+        fields = ["name"]
+        widgets = {"name": forms.TextInput(attrs={"placeholder": "e.g. Weekly digest"})}
+
+
+class BaseNewsletterTemplateSectionFormSet(BaseInlineFormSet):
+    """Formset that always returns template sections ordered by the order field."""
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        return qs.order_by("order")
+
+
+NewsletterTemplateSectionFormSet = inlineformset_factory(
+    NewsletterTemplate,
+    NewsletterTemplateSection,
+    fields=["order", "heading", "body_markdown"],
+    extra=2,
+    can_delete=True,
+    formset=BaseNewsletterTemplateSectionFormSet,
+    widgets={
+        "heading": forms.TextInput(attrs={"placeholder": "Section heading", "class": "form-control"}),
+        "body_markdown": forms.Textarea(attrs={"rows": 4, "placeholder": "Markdown content", "class": "form-control"}),
+    },
+)
+
+
+class NewsletterIssueForm(forms.ModelForm):
+    """Form for creating and editing newsletter issues (metadata; sections in formset)."""
+
+    class Meta:
+        model = NewsletterIssue
+        fields = [
+            "title",
+            "slug",
+            "subject",
+            "preheader",
+            "meta_title",
+            "meta_description",
+            "status",
+            "scheduled_date",
+            "divider_image_url",
+            "created_from_template",
+        ]
+        widgets = {
+            "title": forms.TextInput(attrs={"placeholder": "Issue title"}),
+            "slug": forms.TextInput(attrs={"placeholder": "Optional; leave blank for draft and we'll generate one"}),
+            "subject": forms.TextInput(attrs={"placeholder": "Email subject (defaults to title)"}),
+            "preheader": forms.TextInput(attrs={"placeholder": "Optional preheader (shown next to subject)"}),
+            "meta_title": forms.TextInput(attrs={"placeholder": "Meta title (max 60)", "maxlength": 60}),
+            "meta_description": forms.Textarea(attrs={"rows": 2, "placeholder": "Meta description (max 320)", "maxlength": 320}),
+            "scheduled_date": forms.DateInput(attrs={"type": "date"}),
+            "divider_image_url": forms.URLInput(attrs={"placeholder": "Optional image URL between sections; leave blank for a line divider"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Allow saving drafts without a slug; view will auto-generate one when blank
+        if not self.instance or not self.instance.pk:
+            self.fields["slug"].required = False
+
+
+class BaseNewsletterIssueSectionFormSet(BaseInlineFormSet):
+    """Formset that yields forms sorted by the order field so the editor displays sections in Order order."""
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        return qs.order_by("order")
+
+    def _construct_form(self, i, **kwargs):
+        form = super()._construct_form(i, **kwargs)
+        # Allow empty extra forms (trailing rows) so save works with 0 or 1 section on create, and with empty rows on edit
+        if i >= self.initial_form_count():
+            form.empty_permitted = True
+        return form
+
+    def save_new_objects(self, commit=True):
+        """Only save extra forms that have real content (heading or body). Empty trailing rows must not create sections."""
+        self.new_objects = []
+        for form in self.extra_forms:
+            if not form.has_changed():
+                continue
+            if self.can_delete and self._should_delete_form(form):
+                continue
+            # Do not create a section when both heading and body are empty (avoids two new sections on every edit)
+            cleaned = getattr(form, "cleaned_data", None) or {}
+            heading = (cleaned.get("heading") or "").strip()
+            body = (cleaned.get("body_markdown") or "").strip()
+            if not heading and not body:
+                continue
+            self.new_objects.append(self.save_new(form, commit=commit))
+            if not commit:
+                self.saved_forms.append(form)
+        return self.new_objects
+
+    def __iter__(self):
+        """Yield forms sorted by section order (existing sections by order field, then extra forms)."""
+        def order_key(f):
+            if f.instance and getattr(f.instance, "pk", None):
+                return (0, getattr(f.instance, "order", 0), f.instance.pk)
+            initial = getattr(f, "initial", None) or {}
+            return (1, int(initial.get("order", 999)), id(f))
+        yield from sorted(self.forms, key=order_key)
+
+
+# Edit: no extra empty rows; use "Add section" to add more.
+NewsletterIssueSectionFormSet = inlineformset_factory(
+    NewsletterIssue,
+    NewsletterIssueSection,
+    fields=["order", "heading", "body_markdown"],
+    extra=0,
+    can_delete=True,
+    formset=BaseNewsletterIssueSectionFormSet,
+    widgets={
+        "heading": forms.TextInput(attrs={"placeholder": "Section heading", "class": "form-control"}),
+        "body_markdown": forms.Textarea(attrs={"rows": 4, "placeholder": "Markdown content", "class": "form-control"}),
+    },
+)
+
+# Create: show 2 empty rows so user can add sections without clicking "Add section" first.
+NewsletterIssueSectionFormSetForCreate = inlineformset_factory(
+    NewsletterIssue,
+    NewsletterIssueSection,
+    fields=["order", "heading", "body_markdown"],
+    extra=2,
+    can_delete=True,
+    formset=BaseNewsletterIssueSectionFormSet,
+    widgets={
+        "heading": forms.TextInput(attrs={"placeholder": "Section heading", "class": "form-control"}),
+        "body_markdown": forms.Textarea(attrs={"rows": 4, "placeholder": "Markdown content", "class": "form-control"}),
+    },
+)

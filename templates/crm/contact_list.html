@@ -27,10 +27,16 @@
 <form id="bulk-delete-form" action="{% url 'crm:contact_bulk_delete' %}" method="post" class="d-none">
     {% csrf_token %}
 </form>
+<form id="bulk-enrich-form" action="{% url 'crm:contact_bulk_enrich' %}" method="post" class="d-none">
+    {% csrf_token %}
+</form>
 <div class="card">
     <div class="card-body p-0">
         <div id="bulk-actions-bar" class="d-flex align-items-center gap-2 px-3 py-2 bg-light border-bottom" style="display: none !important;">
             <span id="bulk-selected-count" class="fw-medium">0</span> selected
+            <button type="button" id="bulk-enrich-btn" class="btn btn-outline-primary btn-sm" title="Enrich selected with LLM (company/job title from headline, bio, etc.)">
+                <i class="fas fa-magic"></i> Enrich
+            </button>
             <button type="button" id="bulk-delete-btn" class="btn btn-outline-danger btn-sm" title="Delete selected">
                 <i class="fas fa-trash-alt"></i> Delete
             </button>
@@ -73,7 +79,7 @@
                     <div class="dropdown">
                         <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="contact-filters-dropdown" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fas fa-filter"></i> Filters
-                            {% if filters.country or filters.industry or filters.verified or filters.outreach or filters.pain_signal or filters.has_email or filters.has_linkedin or filters.has_company %}
+                            {% if filters.country or filters.industry or filters.verified or filters.outreach or filters.reply or filters.pain_signal or filters.has_email or filters.has_linkedin or filters.has_company or filters.subscribed %}
                             <span class="badge bg-primary ms-1">on</span>
                             {% endif %}
                         </button>
@@ -90,6 +96,12 @@
                                 <label class="me-2 small"><input type="radio" name="outreach" value="" {% if not filters.outreach %}checked{% endif %}> Any</label>
                                 <label class="me-2 small"><input type="radio" name="outreach" value="yes" {% if filters.outreach == 'yes' %}checked{% endif %}> <i class="fas fa-check text-success"></i> Yes</label>
                                 <label class="small"><input type="radio" name="outreach" value="no" {% if filters.outreach == 'no' %}checked{% endif %}> <i class="fas fa-times text-danger"></i> No</label>
+                            </li>
+                            <li class="py-1">
+                                <span class="d-block small fw-medium">Reply</span>
+                                <label class="me-2 small"><input type="radio" name="reply" value="" {% if not filters.reply %}checked{% endif %}> Any</label>
+                                <label class="me-2 small"><input type="radio" name="reply" value="yes" {% if filters.reply == 'yes' %}checked{% endif %}> <i class="fas fa-check text-success"></i> Yes</label>
+                                <label class="small"><input type="radio" name="reply" value="no" {% if filters.reply == 'no' %}checked{% endif %}> <i class="fas fa-times text-danger"></i> No</label>
                             </li>
                             <li class="py-1">
                                 <span class="d-block small fw-medium">Pain Signal (company)</span>
@@ -114,6 +126,12 @@
                                 <label class="me-2 small"><input type="radio" name="has_company" value="" {% if not filters.has_company %}checked{% endif %}> Any</label>
                                 <label class="me-2 small"><input type="radio" name="has_company" value="yes" {% if filters.has_company == 'yes' %}checked{% endif %}> <i class="fas fa-check text-success"></i> Yes</label>
                                 <label class="small"><input type="radio" name="has_company" value="no" {% if filters.has_company == 'no' %}checked{% endif %}> <i class="fas fa-times text-danger"></i> No</label>
+                            </li>
+                            <li class="py-1">
+                                <span class="d-block small fw-medium">Subscribed</span>
+                                <label class="me-2 small"><input type="radio" name="subscribed" value="" {% if not filters.subscribed %}checked{% endif %}> Any</label>
+                                <label class="me-2 small"><input type="radio" name="subscribed" value="yes" {% if filters.subscribed == 'yes' %}checked{% endif %}> <i class="fas fa-check text-success"></i> Yes</label>
+                                <label class="small"><input type="radio" name="subscribed" value="no" {% if filters.subscribed == 'no' %}checked{% endif %}> <i class="fas fa-times text-danger"></i> No</label>
                             </li>
                             <li><hr class="dropdown-divider"></li>
                             <li class="d-flex gap-1">
@@ -220,8 +238,12 @@
                                 <td>
                                     {% if contact.last_contact %}{{ contact.last_contact|date:"Y-m-d H:i" }}{% else %}—{% endif %}
                                 </td>
-                                <td class="editable-cell" data-editable data-entity="contact" data-id="{{ contact.pk }}" data-field="outreach_status" data-type="select" data-value="{{ contact.outreach_status|default:'' }}">
-                                    <span class="badge bg-secondary">{{ contact.get_outreach_status_display }}</span>
+                                <td>
+                                    {% if contact.has_activity %}
+                                        <span class="badge bg-success">Contacted</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Not contacted</span>
+                                    {% endif %}
                                 </td>
                                 <td>
                                     {% with url=contact.linkedin|default:contact.linkedin_url %}
@@ -366,7 +388,9 @@ document.addEventListener('DOMContentLoaded', function() {
     var bulkBar = document.getElementById('bulk-actions-bar');
     var bulkCount = document.getElementById('bulk-selected-count');
     var bulkDeleteBtn = document.getElementById('bulk-delete-btn');
-    var bulkForm = document.getElementById('bulk-delete-form');
+    var bulkDeleteForm = document.getElementById('bulk-delete-form');
+    var bulkEnrichBtn = document.getElementById('bulk-enrich-btn');
+    var bulkEnrichForm = document.getElementById('bulk-enrich-form');
 
     function updateBulkUI() {
         var checked = document.querySelectorAll('.row-select-contact:checked');
@@ -390,27 +414,36 @@ document.addEventListener('DOMContentLoaded', function() {
         cb.addEventListener('change', updateBulkUI);
     });
 
-    if (bulkDeleteBtn && bulkForm) {
+    function submitBulkForm(form, ids) {
+        if (!ids.length) return;
+        form.innerHTML = '';
+        var csrf = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (csrf) {
+            var c = document.createElement('input');
+            c.type = 'hidden';
+            c.name = 'csrfmiddlewaretoken';
+            c.value = csrf.value;
+            form.appendChild(c);
+        }
+        ids.forEach(function(id) {
+            var input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'ids';
+            input.value = id;
+            form.appendChild(input);
+        });
+        form.submit();
+    }
+    if (bulkDeleteBtn && bulkDeleteForm) {
         bulkDeleteBtn.addEventListener('click', function() {
             var ids = Array.from(document.querySelectorAll('.row-select-contact:checked')).map(function(cb) { return cb.value; });
-            if (ids.length === 0) return;
-            bulkForm.innerHTML = '';
-            var csrf = document.querySelector('[name=csrfmiddlewaretoken]');
-            if (csrf) {
-                var c = document.createElement('input');
-                c.type = 'hidden';
-                c.name = 'csrfmiddlewaretoken';
-                c.value = csrf.value;
-                bulkForm.appendChild(c);
-            }
-            ids.forEach(function(id) {
-                var input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'ids';
-                input.value = id;
-                bulkForm.appendChild(input);
-            });
-            bulkForm.submit();
+            submitBulkForm(bulkDeleteForm, ids);
+        });
+    }
+    if (bulkEnrichBtn && bulkEnrichForm) {
+        bulkEnrichBtn.addEventListener('click', function() {
+            var ids = Array.from(document.querySelectorAll('.row-select-contact:checked')).map(function(cb) { return cb.value; });
+            submitBulkForm(bulkEnrichForm, ids);
         });
     }
 });

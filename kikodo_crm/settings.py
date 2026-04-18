@@ -208,10 +208,26 @@ EMAIL_BACKEND = config(
     default="django.core.mail.backends.console.EmailBackend",
 )
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="noreply@example.com")
-# Base URL for unsubscribe links in sequence emails (e.g. https://app.example.com)
-SITE_URL = config("SITE_URL", default="")
+EMAIL_HOST = config("EMAIL_HOST", default="localhost")
+EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
+EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
+EMAIL_USE_SSL = config("EMAIL_USE_SSL", default=False, cast=bool)
+EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
 # Base URL where the CRM is served (e.g. http://localhost:8081). Used for API config and extensions.
 BASE_URL = config("BASE_URL", default="http://localhost:8081")
+# Base URL for unsubscribe links and view-in-browser links (prefer explicit SITE_URL; fallback to BASE_URL).
+SITE_URL = config("SITE_URL", default=BASE_URL)
+# Email for task manager notifications when pending activities are created/updated
+TASK_MANAGER = config("TASK_MANAGER", default="")
+# If "console", task manager notifications use console backend (printed to terminal) instead of SMTP
+TASK_MANAGER_EMAIL_BACKEND = config("TASK_MANAGER_EMAIL_BACKEND", default="")
+# Global fallback for email signature (HTML); per-user signature in UserProfile.email_signature
+EMAIL_SIGNATURE_HTML = config("EMAIL_SIGNATURE_HTML", default="")
+
+# Blog API (www.kikodo.app) – for publishing newsletter issues as blog posts
+KIKODO_BLOG_API_URL = config("KIKODO_BLOG_API_URL", default="")
+KIKODO_BLOG_API_TOKEN = config("KIKODO_BLOG_API_TOKEN", default="")
 
 # Celery Configuration (for background tasks)
 CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/0")
@@ -227,7 +243,19 @@ CACHES = {
     }
 }
 
-# Signals: LLM (Ollama) for URL → spreadsheet population
+# Session backend — signed cookies need no DB or Redis queries, making them
+# safe to use under ASGI/uvicorn without SynchronousOnlyOperation errors.
+# Switch to "django.contrib.sessions.backends.cache" if Redis is always running.
+SESSION_ENGINE = "django.contrib.sessions.backends.signed_cookies"
+
+# AI Backend (crm/ai_connector.py)
+# AI_BACKEND: "auto" (default) | "claude" | "ollama"
+#   auto → uses Claude if ANTHROPIC_API_KEY is set, otherwise falls back to Ollama
+AI_BACKEND = config("AI_BACKEND", default="auto")
+ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", default="")
+ANTHROPIC_MODEL = config("ANTHROPIC_MODEL", default="claude-sonnet-4-6")
+
+# Ollama (local fallback / explicit backend)
 OLLAMA_BASE_URL = config("OLLAMA_BASE_URL", default="http://localhost:11434")
 OLLAMA_MODEL = config("OLLAMA_MODEL", default="qwen3-coder:30b")
 
@@ -246,3 +274,20 @@ SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SAMESITE = "Lax"
+
+# Logging (crm signals e.g. pending activity notifications)
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "loggers": {
+        "crm": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
+    },
+}

@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+
+{% block title %}Send Email to {{ contact.full_name }} - Kikodo CRM{% endblock %}
+{% block page_title %}Send Email to {{ contact.full_name }}{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <p class="text-muted mb-3">
+      <i class="fas fa-envelope me-1"></i> To: {{ contact.email }}
+      {% if contact.company %} · {{ contact.company.name }}{% endif %}
+    </p>
+    <form method="post">
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+
+      <div class="mb-3">
+        <label class="form-label" for="id_subject">Subject</label>
+        {{ form.subject }}
+        {% if form.subject.errors %}
+        <div class="invalid-feedback d-block">{{ form.subject.errors.0 }}</div>
+        {% endif %}
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label" for="id_body">Message <span class="text-muted small">(Markdown supported)</span></label>
+        {{ form.body }}
+        {% if form.body.errors %}
+        <div class="invalid-feedback d-block">{{ form.body.errors.0 }}</div>
+        {% endif %}
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label" for="id_schedule_at">Schedule for later <span class="text-muted small">(optional)</span></label>
+        {{ form.schedule_at }}
+        <div class="form-text">Leave blank to send immediately. Scheduled emails are sent when <code>run_sequences</code> runs (e.g. via cron).</div>
+        {% if form.schedule_at.errors %}
+        <div class="invalid-feedback d-block">{{ form.schedule_at.errors.0 }}</div>
+        {% endif %}
+      </div>
+
+      <div class="d-flex justify-content-between mt-4">
+        <a href="{% url 'crm:contact_detail' contact.pk %}" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-paper-plane me-1"></i> Send Email
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

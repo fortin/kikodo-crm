@@ -63,9 +63,18 @@
         </div>
       </div>
 
-      <div class="mt-4 d-flex justify-content-end">
-        <a href="{% url 'crm:activity_list' %}" class="btn btn-secondary me-2">Cancel</a>
-        <button type="submit" class="btn btn-primary">Save Activity</button>
+      <div class="mt-4 d-flex justify-content-between">
+        <div>
+          {% if form.instance.pk %}
+          <a href="{% url 'crm:activity_delete' form.instance.pk %}" class="btn btn-outline-danger">
+            <i class="fas fa-trash-alt"></i> Delete
+          </a>
+          {% endif %}
+        </div>
+        <div>
+          <a href="{% url 'crm:activity_list' %}" class="btn btn-secondary me-2">Cancel</a>
+          <button type="submit" class="btn btn-primary">Save Activity</button>
+        </div>
       </div>
     </form>
   </div>

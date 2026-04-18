@@ -22,21 +22,156 @@
     <p class="text-muted small mb-3">
       Paste a URL below. The system will fetch the page content and use Ollama (local LLM) to populate headline, summary, relevance, and other fields. Ensure Ollama is running (e.g. <code>ollama serve</code>) and a model is available (e.g. <code>ollama pull llama3.2</code>).
     </p>
-    <form method="post" action="{% url 'crm:signal_create' %}">
+    <form method="post" action="{% url 'crm:signal_create' %}" id="signal-create-url-form">
       {% csrf_token %}
       {{ form|crispy }}
-      <button type="submit" class="btn btn-primary">
+      <button type="submit" class="btn btn-primary" id="signal-create-submit">
         <i class="fas fa-magic"></i> Fetch URL &amp; Populate with LLM
       </button>
+      <a href="{% url 'crm:signal_paste_content_page' %}" class="btn btn-outline-primary ms-2">
+        <i class="fas fa-paste"></i> Paste page content
+      </a>
       <a href="{% url 'crm:signal_list' %}" class="btn btn-outline-secondary">Cancel</a>
     </form>
+    <!-- Progress overlay when submitting URL -->
+    <div id="signal-create-overlay" class="position-fixed top-0 start-0 w-100 h-100 d-none" style="z-index: 1050; background: rgba(255,255,255,0.85); align-items: center; justify-content: center;">
+      <div class="text-center">
+        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+          <span class="visually-hidden">Loading…</span>
+        </div>
+        <p class="text-muted mb-0">Fetching URL and populating with LLM…</p>
+        <p class="small text-muted mt-1">This may take a moment.</p>
+      </div>
+    </div>
+    <script>
+    (function() {
+      var form = document.getElementById('signal-create-url-form');
+      var overlay = document.getElementById('signal-create-overlay');
+      var submitBtn = document.getElementById('signal-create-submit');
+      if (form && overlay && submitBtn) {
+        form.addEventListener('submit', function(e) {
+          if (form.getAttribute('data-signal-create-submitting') === '1') {
+            return;
+          }
+          e.preventDefault();
+          overlay.classList.remove('d-none');
+          overlay.classList.add('d-flex');
+          submitBtn.disabled = true;
+          form.setAttribute('data-signal-create-submitting', '1');
+          requestAnimationFrame(function() {
+            requestAnimationFrame(function() {
+              form.submit();
+            });
+          });
+        });
+      }
+    })();
+    </script>
     {% else %}
-    <form method="post" action="{% url 'crm:signal_edit' signal.pk %}">
+    <form method="post" action="{% url 'crm:signal_edit' signal.pk %}" id="signal-edit-form">
       {% csrf_token %}
       {{ form|crispy }}
       <button type="submit" class="btn btn-primary">Save</button>
+      <button type="button" class="btn btn-outline-primary ms-2" data-bs-toggle="modal" data-bs-target="#pasteContentModal">
+        <i class="fas fa-paste"></i> Paste content &amp; populate with LLM
+      </button>
       <a href="{% url 'crm:signal_detail' signal.pk %}" class="btn btn-outline-secondary">Cancel</a>
     </form>
+
+    <!-- Modal: Paste content for LLM processing -->
+    <div class="modal fade" id="pasteContentModal" tabindex="-1" aria-labelledby="pasteContentModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="pasteContentModalLabel">
+              <i class="fas fa-paste me-1"></i> Paste page content for LLM processing
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-muted small mb-2">
+              Paste the article or page text below. The LLM will extract headline, summary, relevance, and other fields into the form.
+            </p>
+            <textarea id="pasteContentTextarea" class="form-control" rows="12" placeholder="Paste the full page text here…"></textarea>
+            <div id="pasteContentError" class="alert alert-danger mt-2 d-none" role="alert"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="pasteContentSubmit">
+              <i class="fas fa-magic"></i> Populate with LLM
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+    (function() {
+      const modal = document.getElementById('pasteContentModal');
+      const textarea = document.getElementById('pasteContentTextarea');
+      const submitBtn = document.getElementById('pasteContentSubmit');
+      const errorDiv = document.getElementById('pasteContentError');
+      const form = document.getElementById('signal-edit-form');
+
+      function showError(msg) {
+        errorDiv.textContent = msg;
+        errorDiv.classList.remove('d-none');
+      }
+      function hideError() {
+        errorDiv.classList.add('d-none');
+      }
+
+      modal.addEventListener('show.bs.modal', function() {
+        textarea.value = '';
+        hideError();
+      });
+
+      submitBtn.addEventListener('click', function() {
+        const content = textarea.value.trim();
+        if (!content) {
+          showError('Please paste some content.');
+          return;
+        }
+        hideError();
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Processing…';
+
+        const formData = new FormData();
+        formData.append('pasted_content', content);
+        formData.append('csrfmiddlewaretoken', form.querySelector('[name=csrfmiddlewaretoken]').value);
+
+        fetch('{% url "crm:signal_populate_from_text" signal.pk %}', {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': form.querySelector('[name=csrfmiddlewaretoken]').value
+          },
+          credentials: 'same-origin'
+        })
+        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+        .then(function(result) {
+          if (result.ok && result.data.success) {
+            const fields = result.data.fields || {};
+            for (const [name, value] of Object.entries(fields)) {
+              const el = form.querySelector('[name="' + name + '"]');
+              if (el) el.value = value !== null && value !== undefined ? value : '';
+            }
+            bootstrap.Modal.getInstance(modal).hide();
+          } else {
+            showError(result.data.error || 'An error occurred.');
+          }
+        })
+        .catch(function(err) {
+          showError(err.message || 'Request failed.');
+        })
+        .finally(function() {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<i class="fas fa-magic"></i> Populate with LLM';
+        });
+      });
+    })();
+    </script>
     {% endif %}
   </div>
 </div>

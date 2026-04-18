@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+
+{% block title %}Delete welcome automation - Kikodo CRM{% endblock %}
+{% block page_title %}Delete welcome automation{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <p>Delete <strong>{{ automation.name }}</strong> and all of its steps? This cannot be undone.</p>
+    <p class="text-muted small">You can only delete if no contacts have enrollments for this automation.</p>
+    <form method="post" action="{% url 'crm:welcome_automation_delete' automation.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-danger">Delete</button>
+      <a href="{% url 'crm:welcome_automation_detail' automation.pk %}" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

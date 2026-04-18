@@ -5,10 +5,14 @@ from urllib.parse import urlencode
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Avg, Count, Prefetch, Q, Sum
+from django.db.models import Avg, Count, Exists, OuterRef, Prefetch, Q, Sum, Value
+from django.db.models.functions import Concat
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
+from django import forms
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
+from django.utils.text import slugify
 
 from crm.models import (
     Activity,
@@ -17,6 +21,14 @@ from crm.models import (
     Company,
     Contact,
     Deal,
+    NewsletterAnalytics,
+    NewsletterConversion,
+    NewsletterEdition,
+    NewsletterIssue,
+    NewsletterIssueSection,
+    NewsletterPlan,
+    NewsletterTemplate,
+    NewsletterTemplateSection,
     OperatingArea,
     PainSignal,
     PainType,
@@ -24,6 +36,8 @@ from crm.models import (
     SequenceEnrollment,
     SequenceStep,
     Signal,
+    WelcomeAutomation,
+    WelcomeEmail,
 )
 
 from .custom_fields import (
@@ -34,18 +48,30 @@ from .custom_fields import (
 )
 from .forms import (
     ActivityForm,
+    BaseNewsletterIssueSectionFormSet,
     CompanyForm,
     ContactForm,
     CSVImportForm,
     DealForm,
     EnrollContactInSequenceForm,
+    NewsletterAnalyticsForm,
+    NewsletterEditionForm,
+    NewsletterIssueForm,
+    NewsletterPlanForm,
+    NewsletterTemplateForm,
+    NewsletterTemplateSectionFormSet,
+    NewsletterIssueSectionFormSet,
+    NewsletterIssueSectionFormSetForCreate,
     OperatingAreaFormSet,
+    SendEmailForm,
     SequenceEnrollContactsForm,
     SequenceForm,
     SequenceStepFormSet,
     SignalCreateForm,
     SignalForm,
     SignalPasteForm,
+    WelcomeAutomationForm,
+    WelcomeEmailForm,
 )
 from .permissions import (
     filter_queryset_by_team,
@@ -142,6 +168,14 @@ def contact_list(request):
     contacts_qs = Contact.objects.filter(is_active=True).select_related("company")
     contacts_qs = filter_queryset_by_team(contacts_qs, request.user, "owner")
 
+    # Computed flags for activity-based filters (avoid joins + distinct() churn)
+    activity_exists_qs = Activity.objects.filter(contact_id=OuterRef("pk"))
+    reply_exists_qs = activity_exists_qs.exclude(outcome="")
+    contacts_qs = contacts_qs.annotate(
+        has_activity=Exists(activity_exists_qs),
+        has_reply=Exists(reply_exists_qs),
+    )
+
     # Country filter (distinct countries for dropdown)
     countries = (
         Contact.objects.filter(is_active=True)
@@ -169,20 +203,25 @@ def contact_list(request):
     # Boolean filters (single dropdown)
     verified = (request.GET.get("verified") or "").strip()
     outreach = (request.GET.get("outreach") or "").strip()
+    reply = (request.GET.get("reply") or "").strip()
     pain_signal = (request.GET.get("pain_signal") or "").strip()
     has_email = (request.GET.get("has_email") or "").strip()
     has_linkedin = (request.GET.get("has_linkedin") or "").strip()
     has_company = (request.GET.get("has_company") or "").strip()
+    subscribed = (request.GET.get("subscribed") or "").strip()
 
     if verified == "yes":
         contacts_qs = contacts_qs.filter(verified=True)
     elif verified == "no":
         contacts_qs = contacts_qs.filter(verified=False)
 
+    # Outreach = "have I contacted them?" (any related Activity)
     if outreach == "yes":
-        contacts_qs = contacts_qs.exclude(outreach_status="not_contacted")
+        contacts_qs = contacts_qs.filter(has_activity=True)
     elif outreach == "no":
-        contacts_qs = contacts_qs.filter(outreach_status="not_contacted")
+        contacts_qs = contacts_qs.filter(has_activity=False)
+
+    # Reply = "did they reply?" (any related Activity with non-empty Outcome / Reply)
 
     if pain_signal == "yes":
         contacts_qs = contacts_qs.filter(company__pain_signals__isnull=False).distinct()
@@ -206,12 +245,20 @@ def contact_list(request):
     elif has_company == "no":
         contacts_qs = contacts_qs.filter(company__isnull=True)
 
+    if subscribed == "yes":
+        contacts_qs = contacts_qs.filter(newsletter_subscribed=True)
+    elif subscribed == "no":
+        contacts_qs = contacts_qs.filter(newsletter_subscribed=False)
+
     # Text search
     search_query = (request.GET.get("q") or "").strip()
     if search_query:
-        contacts_qs = contacts_qs.filter(
+        contacts_qs = contacts_qs.annotate(
+            _search_full_name=Concat("first_name", Value(" "), "last_name")
+        ).filter(
             Q(first_name__icontains=search_query)
             | Q(last_name__icontains=search_query)
+            | Q(_search_full_name__icontains=search_query)
             | Q(email__icontains=search_query)
             | Q(company__name__icontains=search_query)
             | Q(phone__icontains=search_query)
@@ -269,10 +316,12 @@ def contact_list(request):
         "industry": industry_list,
         "verified": verified,
         "outreach": outreach,
+        "reply": reply,
         "pain_signal": pain_signal,
         "has_email": has_email,
         "has_linkedin": has_linkedin,
         "has_company": has_company,
+        "subscribed": subscribed,
     }
     filter_query = urlencode({k: v for k, v in filters.items() if v}, doseq=True)
 
@@ -434,6 +483,126 @@ def contact_detail(request, pk):
         "Activity": Activity,
     }
     return render(request, "crm/contact_detail.html", context)
+
+
+@login_required
+def contact_send_email(request, pk):
+    """Compose and send email to contact (immediate or scheduled)."""
+    contact = get_object_or_404(Contact.objects.select_related("company"), pk=pk)
+    if not user_can_edit_entity(request.user, contact, "owner"):
+        return HttpResponseForbidden("You do not have permission to send email to this contact.")
+
+    if not contact.email or not contact.email.strip():
+        messages.error(request, "This contact has no email address.")
+        return redirect("crm:contact_detail", pk=contact.pk)
+
+    if not contact.can_email_outbound:
+        messages.error(request, "This contact has opted out of outbound emails.")
+        return redirect("crm:contact_detail", pk=contact.pk)
+
+    if request.method == "POST":
+        form = SendEmailForm(request.POST)
+        if form.is_valid():
+            subject = form.cleaned_data["subject"]
+            body = form.cleaned_data["body"]
+            schedule_at = form.cleaned_data.get("schedule_at")
+
+            from .email_utils import send_outbound_email
+
+            try:
+                activity = send_outbound_email(
+                    contact=contact,
+                    subject=subject,
+                    body_markdown=body,
+                    from_user=request.user,
+                    schedule_at=schedule_at,
+                    company=contact.company,
+                )
+                if schedule_at:
+                    messages.success(
+                        request,
+                        f"Email scheduled for {schedule_at.strftime('%Y-%m-%d %H:%M')}. "
+                        "It will be sent when run_sequences runs.",
+                    )
+                else:
+                    messages.success(request, "Email sent successfully.")
+                return redirect("crm:contact_detail", pk=contact.pk)
+            except Exception as e:
+                messages.error(request, f"Failed to send email: {e}")
+    else:
+        form = SendEmailForm()
+
+    return render(
+        request,
+        "crm/send_email.html",
+        {"form": form, "contact": contact},
+    )
+
+
+@login_required
+def contact_enrich(request, pk):
+    """Enrich a single contact using LLM (POST only)."""
+    if request.method != "POST":
+        return redirect("crm:contact_detail", pk=pk)
+    contact = get_object_or_404(Contact.objects.select_related("company"), pk=pk)
+    if not user_can_view_entity(request.user, contact, "owner"):
+        return HttpResponseForbidden("You do not have permission to enrich this contact.")
+    from .enrichment import enrich_contact_from_llm
+
+    result = enrich_contact_from_llm(contact)
+    if result["error"]:
+        messages.error(request, f"Enrichment failed: {result['error']}")
+    elif result["updated"]:
+        parts = []
+        if result["job_title"]:
+            parts.append(f"job title: {result['job_title']}")
+        if result["company"]:
+            parts.append(f"company: {result['company'].name}")
+        messages.success(request, f"Enriched contact: {', '.join(parts)}")
+    else:
+        messages.warning(
+            request,
+            "No new data could be extracted. Add headline, bio, notes, email, or LinkedIn URL.",
+        )
+    return redirect("crm:contact_detail", pk=pk)
+
+
+@login_required
+def contact_bulk_enrich(request):
+    """Enrich selected contacts using LLM (POST only)."""
+    if request.method != "POST":
+        return redirect("crm:contact_list")
+    ids = request.POST.getlist("ids")
+    if not ids:
+        messages.warning(request, "No contacts selected.")
+        return redirect("crm:contact_list")
+    try:
+        pk_list = [int(i) for i in ids if i]
+    except (ValueError, TypeError):
+        messages.error(request, "Invalid selection.")
+        return redirect("crm:contact_list")
+    contacts = Contact.objects.filter(pk__in=pk_list, is_active=True).select_related("company")
+    contacts = list(filter_queryset_by_team(contacts, request.user, "owner"))
+    from .enrichment import enrich_contact_from_llm
+
+    updated_count = 0
+    error_count = 0
+    for contact in contacts:
+        result = enrich_contact_from_llm(contact)
+        if result["updated"]:
+            updated_count += 1
+        elif result["error"]:
+            error_count += 1
+    if updated_count:
+        messages.success(request, f"Enriched {updated_count} contact(s).")
+    if error_count:
+        messages.warning(request, f"{error_count} contact(s) could not be enriched (no data or LLM error).")
+    if not updated_count and not error_count:
+        messages.warning(
+            request,
+            "No contacts were enriched. They may already have company/job title, or lack headline/bio/notes/email/LinkedIn.",
+        )
+    return redirect("crm:contact_list")
 
 
 @login_required
@@ -1161,12 +1330,13 @@ def activity_create(request, contact_id=None, company_id=None, thread_id=None):
         form = ActivityForm(initial=initial)
 
     # Provide contacts/companies to support client-side auto-fill of company when contact changes
+    # Exclude soft-deleted records so dropdowns only show active contacts/companies
     contacts_qs = (
-        Contact.objects.select_related("company")
-        .all()
+        Contact.objects.filter(is_active=True)
+        .select_related("company")
         .order_by("last_name", "first_name")
     )
-    companies_qs = Company.objects.all().order_by("name")
+    companies_qs = Company.objects.filter(is_active=True).order_by("name")
 
     return render(
         request,
@@ -1208,12 +1378,21 @@ def activity_edit(request, pk):
     else:
         form = ActivityForm(instance=activity)
 
+    # Exclude soft-deleted records so dropdowns only show active contacts/companies.
+    # When editing, include the activity's current contact/company so the selection is visible.
+    contact_filter = Q(is_active=True)
+    if activity.contact_id:
+        contact_filter |= Q(pk=activity.contact_id)
+    company_filter = Q(is_active=True)
+    if activity.company_id:
+        company_filter |= Q(pk=activity.company_id)
+
     contacts_qs = (
-        Contact.objects.select_related("company")
-        .all()
+        Contact.objects.filter(contact_filter)
+        .select_related("company")
         .order_by("last_name", "first_name")
     )
-    companies_qs = Company.objects.all().order_by("name")
+    companies_qs = Company.objects.filter(company_filter).order_by("name")
 
     return render(
         request,
@@ -1225,6 +1404,18 @@ def activity_edit(request, pk):
             "page_title": "Edit Activity",
         },
     )
+
+
+@login_required
+def activity_delete(request, pk):
+    """Delete an activity. GET shows confirm page; POST deletes and redirects to list."""
+    activity = get_object_or_404(Activity, pk=pk)
+    if request.method == "POST":
+        subject = activity.subject or "(no subject)"
+        activity.delete()
+        messages.success(request, f'Activity "{subject}" deleted.')
+        return redirect("crm:activity_list")
+    return render(request, "crm/activity_confirm_delete.html", {"activity": activity})
 
 
 @login_required
@@ -1913,6 +2104,14 @@ def contact_export_csv(request):
     """Export contacts to CSV (contact-centric columns). Respects same filters as list view."""
     contacts = Contact.objects.filter(is_active=True).select_related("company")
 
+    # Computed flags for activity-based filters (keep in sync with contact_list)
+    activity_exists_qs = Activity.objects.filter(contact_id=OuterRef("pk"))
+    reply_exists_qs = activity_exists_qs.exclude(outcome="")
+    contacts = contacts.annotate(
+        has_activity=Exists(activity_exists_qs),
+        has_reply=Exists(reply_exists_qs),
+    )
+
     # Apply same filters as list view
     country = (request.GET.get("country") or "").strip()
     if country:
@@ -1922,18 +2121,25 @@ def contact_export_csv(request):
         contacts = contacts.filter(company__industry__in=industry_list)
     verified = (request.GET.get("verified") or "").strip()
     outreach = (request.GET.get("outreach") or "").strip()
+    reply = (request.GET.get("reply") or "").strip()
     pain_signal = (request.GET.get("pain_signal") or "").strip()
     has_email = (request.GET.get("has_email") or "").strip()
     has_linkedin = (request.GET.get("has_linkedin") or "").strip()
     has_company = (request.GET.get("has_company") or "").strip()
+    subscribed = (request.GET.get("subscribed") or "").strip()
     if verified == "yes":
         contacts = contacts.filter(verified=True)
     elif verified == "no":
         contacts = contacts.filter(verified=False)
     if outreach == "yes":
-        contacts = contacts.exclude(outreach_status="not_contacted")
+        contacts = contacts.filter(has_activity=True)
     elif outreach == "no":
-        contacts = contacts.filter(outreach_status="not_contacted")
+        contacts = contacts.filter(has_activity=False)
+
+    if reply == "yes":
+        contacts = contacts.filter(has_reply=True)
+    elif reply == "no":
+        contacts = contacts.filter(has_reply=False)
     if pain_signal == "yes":
         contacts = contacts.filter(company__pain_signals__isnull=False).distinct()
     elif pain_signal == "no":
@@ -1952,6 +2158,10 @@ def contact_export_csv(request):
         contacts = contacts.filter(company__isnull=False)
     elif has_company == "no":
         contacts = contacts.filter(company__isnull=True)
+    if subscribed == "yes":
+        contacts = contacts.filter(newsletter_subscribed=True)
+    elif subscribed == "no":
+        contacts = contacts.filter(newsletter_subscribed=False)
 
     # Apply same sorting as list view
     sort_by = request.GET.get("sort", "last_name")
@@ -2031,11 +2241,7 @@ def contact_export_csv(request):
                 contact.department or "",
                 contact.company.name if contact.company else "",
                 contact.get_status_display() if contact.status else "",
-                (
-                    contact.get_outreach_status_display()
-                    if contact.outreach_status
-                    else ""
-                ),
+                "Contacted" if getattr(contact, "has_activity", False) else "Not contacted",
                 "Yes" if contact.verified else "No",
                 contact.source or "",
                 contact.address or "",
@@ -2464,6 +2670,23 @@ def _create_signal_from_data(data):
     return signal
 
 
+def _update_signal_from_data(signal, data):
+    """Update an existing Signal with LLM data dict."""
+    signal.source_url = data.get("source_url", signal.source_url)
+    signal.headline = data.get("headline", "")
+    signal.date_logged = data.get("date_logged") or signal.date_logged
+    signal.week = data.get("week", "")
+    signal.source_type = data.get("source_type", "other")
+    signal.relevance = data.get("relevance", "medium")
+    signal.summary = data.get("summary", "")
+    signal.potential_action = data.get("potential_action", "")
+    signal.status = data.get("status", "logged")
+    signal.competitors = data.get("competitors", "")
+    signal.competitors_notes = data.get("competitors_notes", "")
+    signal.save()
+    return signal
+
+
 def _ensure_companies_from_mentioned(mentioned_companies):
     """
     Create or update Company records from LLM-mentioned companies.
@@ -2507,16 +2730,33 @@ def _ensure_companies_from_mentioned(mentioned_companies):
 
 
 @login_required
+def signal_create_paste(request):
+    """Show the paste page content form (entry point from Add Signal page). Form POSTs to signal_create."""
+    if request.method != "GET":
+        return redirect("crm:signal_create")
+    source_url = request.GET.get("url", "").strip()
+    paste_form = SignalPasteForm(initial={"source_url": source_url, "pasted_content": ""})
+    return render(
+        request,
+        "crm/signal_paste_content.html",
+        {
+            "form": paste_form,
+            "source_url": source_url or None,
+        },
+    )
+
+
+@login_required
 def signal_create(request):
     """Create signal: form with URL only; POST fetches URL and calls LLM to populate, then redirects to edit.
-    If fetch returns 403, show paste-content form instead."""
+    If fetch or LLM fails (403, timeout, etc.), show paste-content form so user can add text directly."""
     if request.method == "POST":
         # Handle "paste content" step (after 403 or user chose to paste)
         pasted_content = request.POST.get("pasted_content", "").strip()
-        if pasted_content and request.POST.get("source_url"):
+        if pasted_content:
             paste_form = SignalPasteForm(request.POST)
             if paste_form.is_valid():
-                source_url = paste_form.cleaned_data["source_url"]
+                source_url = paste_form.cleaned_data.get("source_url") or ""
                 try:
                     from .signals_llm import populate_signal_from_text
 
@@ -2587,6 +2827,8 @@ def signal_create(request):
                     )
                 return redirect("crm:signal_edit", pk=signal.pk)
             except Exception as e:
+                # For any fetch/LLM failure (403, timeout, connection error, etc.),
+                # offer the paste form so the user can add text directly for LLM processing.
                 try:
                     import requests.exceptions
 
@@ -2597,34 +2839,19 @@ def signal_create(request):
                     )
                 except Exception:
                     is_403 = False
-
-                if is_403:
-                    paste_form = SignalPasteForm(
-                        initial={"source_url": source_url, "pasted_content": ""}
-                    )
-                    return render(
-                        request,
-                        "crm/signal_paste_content.html",
-                        {
-                            "form": paste_form,
-                            "source_url": source_url,
-                        },
-                    )
-                if isinstance(e, ModuleNotFoundError) and "requests" in str(e):
-                    messages.error(
-                        request,
-                        "The 'requests' package is not installed in this environment. "
-                        "Install it with: pip install requests (or pip install -r requirements.txt). "
-                        "Then add the URL manually and edit the signal, or restart the server and try again.",
-                    )
-                else:
-                    messages.error(
-                        request,
-                        f"Could not fetch URL or call LLM: {e}. Add the URL manually and edit the signal.",
-                    )
-                signal = Signal(source_url=source_url)
-                signal.save()
-                return redirect("crm:signal_edit", pk=signal.pk)
+                paste_form = SignalPasteForm(
+                    initial={"source_url": source_url, "pasted_content": ""}
+                )
+                return render(
+                    request,
+                    "crm/signal_paste_content.html",
+                    {
+                        "form": paste_form,
+                        "source_url": source_url,
+                        "error_message": str(e),
+                        "is_403": is_403,
+                    },
+                )
     else:
         form = SignalCreateForm()
     return render(request, "crm/signal_form.html", {"form": form, "is_create": True})
@@ -2659,6 +2886,64 @@ def signal_edit(request, pk):
 
 
 @login_required
+def signal_populate_from_text(request, pk):
+    """POST pasted_content to populate signal fields via LLM. Returns JSON for AJAX."""
+    if request.method != "POST":
+        return JsonResponse({"success": False, "error": "POST required"}, status=405)
+    signal = get_object_or_404(Signal, pk=pk)
+    pasted_content = (request.POST.get("pasted_content") or "").strip()
+    if not pasted_content:
+        return JsonResponse(
+            {"success": False, "error": "Please paste some content."}, status=400
+        )
+    source_url = signal.source_url or ""
+    if not source_url:
+        return JsonResponse(
+            {"success": False, "error": "Signal has no source URL. Add one first."},
+            status=400,
+        )
+    try:
+        from .signals_llm import populate_signal_from_text
+
+        data = populate_signal_from_text(source_url, pasted_content)
+        _update_signal_from_data(signal, data)
+        companies_created = _ensure_companies_from_mentioned(
+            data.get("mentioned_companies")
+        )
+        if companies_created and not signal.linked_company:
+            signal.linked_company = companies_created[0][0]
+            signal.save()
+        # Build response with field values for form population
+        date_logged = data.get("date_logged")
+        if hasattr(date_logged, "strftime"):
+            date_logged = date_logged.strftime("%Y-%m-%d")
+        return JsonResponse(
+            {
+                "success": True,
+                "message": "Fields populated from LLM.",
+                "fields": {
+                    "headline": data.get("headline", ""),
+                    "date_logged": date_logged or "",
+                    "week": data.get("week", ""),
+                    "source_type": data.get("source_type", "other"),
+                    "relevance": data.get("relevance", "medium"),
+                    "summary": data.get("summary", ""),
+                    "potential_action": data.get("potential_action", ""),
+                    "status": data.get("status", "logged"),
+                    "linked_company": signal.linked_company_id or "",
+                    "competitors": data.get("competitors", ""),
+                    "competitors_notes": data.get("competitors_notes", ""),
+                },
+            }
+        )
+    except Exception as e:
+        return JsonResponse(
+            {"success": False, "error": str(e)},
+            status=500,
+        )
+
+
+@login_required
 def signal_delete(request, pk):
     """Delete a signal. GET shows confirm page; POST deletes and redirects to list."""
     signal = get_object_or_404(Signal, pk=pk)
@@ -2689,7 +2974,8 @@ def unsubscribe(request):
         contact_id = signer.unsign(raw)
         contact = Contact.objects.get(pk=int(contact_id))
         contact.can_email_outbound = False
-        contact.save(update_fields=["can_email_outbound"])
+        contact.newsletter_subscribed = False
+        contact.save(update_fields=["can_email_outbound", "newsletter_subscribed"])
         return render(request, "crm/unsubscribe.html", {"success": True})
     except (BadSignature, ValueError, Contact.DoesNotExist):
         return render(
@@ -2760,3 +3046,719 @@ def signal_export_csv(request):
             ]
         )
     return response
+
+
+# --- Newsletter views ---
+
+
+@login_required
+def newsletter_plan(request, year=None):
+    """Annual newsletter plan view with quarterly tabs."""
+    year = year or timezone.now().year
+    plan, _ = NewsletterPlan.objects.get_or_create(
+        year=year,
+        defaults={"name": f"{year} Newsletter Content"},
+    )
+    quarters = ["Q1", "Q2", "Q3", "Q4"]
+    quarter_themes = plan.quarter_themes or {}
+    active_quarter = request.GET.get("quarter", "Q1")
+    if active_quarter not in quarters:
+        active_quarter = "Q1"
+
+    editions_by_quarter = {}
+    for q in quarters:
+        editions_by_quarter[q] = list(
+            plan.editions.filter(quarter=q)
+            .prefetch_related("issues")
+            .order_by("week_number", "day_of_week")
+        )
+    editions = editions_by_quarter.get(active_quarter, [])
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "update_quarter_theme":
+            q = request.POST.get("quarter")
+            theme = request.POST.get("theme", "").strip()
+            if q in quarters:
+                quarter_themes[q] = theme
+                plan.quarter_themes = quarter_themes
+                plan.save()
+                messages.success(request, f"Q{q[-1]} theme updated.")
+            return redirect(f"{reverse('crm:newsletter_plan_year', kwargs={'year': year})}?quarter={q}")
+        if action == "update_edition":
+            edition_id = request.POST.get("edition_id")
+            if edition_id:
+                edition = get_object_or_404(NewsletterEdition, pk=edition_id, plan=plan)
+                edition.week_number = int(request.POST.get("week_number", edition.week_number))
+                edition.day_of_week = request.POST.get("day_of_week", edition.day_of_week) or "Monday"
+                edition.weekly_theme = request.POST.get("weekly_theme", edition.weekly_theme)
+                edition.notes = request.POST.get("notes", edition.notes)
+                edition.status = request.POST.get("status", edition.status)
+                edition.url = request.POST.get("url", edition.url)
+                edition.save()
+                messages.success(request, "Edition updated.")
+            quarter = request.POST.get("quarter", active_quarter)
+            return redirect(f"{reverse('crm:newsletter_plan_year', kwargs={'year': year})}?quarter={quarter}")
+        if action == "add_edition":
+            form = NewsletterEditionForm(request.POST)
+            if form.is_valid():
+                edition = form.save(commit=False)
+                edition.plan = plan
+                edition.quarter = active_quarter
+                edition.owner = request.user
+                edition.save()
+                messages.success(request, "Edition added.")
+            else:
+                messages.error(request, "Please fix the form errors.")
+            return redirect(f"{reverse('crm:newsletter_plan_year', kwargs={'year': year})}?quarter={active_quarter}")
+
+    edition_form = NewsletterEditionForm(initial={"plan": plan, "quarter": active_quarter})
+    edition_form.fields["plan"].widget = forms.HiddenInput()
+    edition_form.fields["quarter"].widget = forms.HiddenInput()
+
+    return render(
+        request,
+        "crm/newsletter_plan.html",
+        {
+            "plan": plan,
+            "quarters": quarters,
+            "quarter_themes": quarter_themes,
+            "active_quarter": active_quarter,
+            "editions": editions,
+            "edition_form": edition_form,
+            "day_of_week_choices": NewsletterEdition.DAY_OF_WEEK_CHOICES,
+            "prev_year": plan.year - 1,
+            "next_year": plan.year + 1,
+        },
+    )
+
+
+@login_required
+def welcome_automation_list(request):
+    """List welcome automations (each has its own step sequence)."""
+    automations = list(
+        WelcomeAutomation.objects.annotate(step_count=Count("steps")).order_by("name")
+    )
+    return render(
+        request,
+        "crm/welcome_automation_list.html",
+        {"automations": automations},
+    )
+
+
+@login_required
+def welcome_automation_create(request):
+    """Create a new welcome automation (empty steps; add steps from detail)."""
+    if request.method == "POST":
+        form = WelcomeAutomationForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Welcome automation created.")
+            return redirect("crm:welcome_automation_detail", pk=form.instance.pk)
+        messages.error(request, "Please fix the errors below and try again.")
+    else:
+        form = WelcomeAutomationForm()
+    return render(
+        request,
+        "crm/welcome_automation_form.html",
+        {"form": form, "automation": None},
+    )
+
+
+@login_required
+def welcome_automation_detail(request, pk):
+    """One automation: list steps and metadata."""
+    automation = get_object_or_404(
+        WelcomeAutomation.objects.annotate(step_count=Count("steps")),
+        pk=pk,
+    )
+    steps = automation.steps.order_by("order")
+    return render(
+        request,
+        "crm/welcome_automation_detail.html",
+        {"automation": automation, "steps": steps},
+    )
+
+
+@login_required
+def welcome_automation_edit(request, pk):
+    """Edit automation name, active flag, and A/B weight."""
+    automation = get_object_or_404(WelcomeAutomation, pk=pk)
+    if request.method == "POST":
+        form = WelcomeAutomationForm(request.POST, instance=automation)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Welcome automation updated.")
+            return redirect("crm:welcome_automation_detail", pk=automation.pk)
+        messages.error(request, "Please fix the errors below and try again.")
+    else:
+        form = WelcomeAutomationForm(instance=automation)
+    return render(
+        request,
+        "crm/welcome_automation_form.html",
+        {"form": form, "automation": automation},
+    )
+
+
+@login_required
+def welcome_automation_delete(request, pk):
+    """Delete an automation (only if no enrollments)."""
+    automation = get_object_or_404(WelcomeAutomation, pk=pk)
+    if automation.enrollments.exists():
+        messages.error(
+            request,
+            "Cannot delete while contacts have enrollments for this automation. "
+            "Deactivate it instead, or remove enrollments in Admin.",
+        )
+        return redirect("crm:welcome_automation_detail", pk=pk)
+    if request.method == "POST":
+        automation.delete()
+        messages.success(request, "Welcome automation deleted.")
+        return redirect("crm:welcome_automation_list")
+    return render(
+        request,
+        "crm/welcome_automation_confirm_delete.html",
+        {"automation": automation},
+    )
+
+
+@login_required
+def welcome_step_create(request, automation_pk):
+    automation = get_object_or_404(WelcomeAutomation, pk=automation_pk)
+    if request.method == "POST":
+        form = WelcomeEmailForm(request.POST)
+        if form.is_valid():
+            step = form.save(commit=False)
+            step.automation = automation
+            step.save()
+            messages.success(request, "Step saved.")
+            return redirect("crm:welcome_automation_detail", pk=automation.pk)
+        messages.error(request, "Please fix the errors below and try again.")
+    else:
+        form = WelcomeEmailForm()
+    return render(
+        request,
+        "crm/welcome_step_form.html",
+        {"form": form, "automation": automation, "step": None},
+    )
+
+
+@login_required
+def welcome_step_edit(request, automation_pk, pk):
+    automation = get_object_or_404(WelcomeAutomation, pk=automation_pk)
+    step = get_object_or_404(WelcomeEmail, pk=pk, automation=automation)
+    if request.method == "POST":
+        form = WelcomeEmailForm(request.POST, instance=step)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Step updated.")
+            return redirect("crm:welcome_automation_detail", pk=automation.pk)
+        messages.error(request, "Please fix the errors below and try again.")
+    else:
+        form = WelcomeEmailForm(instance=step)
+    return render(
+        request,
+        "crm/welcome_step_form.html",
+        {"form": form, "automation": automation, "step": step},
+    )
+
+
+@login_required
+def welcome_step_delete(request, automation_pk, pk):
+    automation = get_object_or_404(WelcomeAutomation, pk=automation_pk)
+    step = get_object_or_404(WelcomeEmail, pk=pk, automation=automation)
+    if request.method == "POST":
+        step.delete()
+        messages.success(request, "Step deleted.")
+        return redirect("crm:welcome_automation_detail", pk=automation.pk)
+    return render(
+        request,
+        "crm/welcome_step_confirm_delete.html",
+        {"automation": automation, "step": step},
+    )
+
+
+@login_required
+def newsletter_edition_edit(request, pk):
+    """Edit a single newsletter edition (full form)."""
+    edition = get_object_or_404(NewsletterEdition, pk=pk)
+    if request.method == "POST":
+        form = NewsletterEditionForm(request.POST, instance=edition)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Edition updated.")
+            return redirect("crm:newsletter_plan_year", year=edition.plan.year)
+    else:
+        form = NewsletterEditionForm(instance=edition)
+    return render(
+        request,
+        "crm/newsletter_edition_form.html",
+        {"form": form, "edition": edition},
+    )
+
+
+@login_required
+def newsletter_edition_detail(request, pk):
+    """Detail view for a newsletter edition with analytics and conversions."""
+    edition = get_object_or_404(
+        NewsletterEdition.objects.select_related("plan"),
+        pk=pk,
+    )
+    analytics = getattr(edition, "analytics", None)
+    conversions = edition.conversions.select_related("deal", "deal__contact", "deal__company")
+    return render(
+        request,
+        "crm/newsletter_edition_detail.html",
+        {
+            "edition": edition,
+            "analytics": analytics,
+            "conversions": conversions,
+        },
+    )
+
+
+@login_required
+def newsletter_edition_delete(request, pk):
+    """Delete a newsletter edition."""
+    edition = get_object_or_404(NewsletterEdition, pk=pk)
+    plan_year = edition.plan.year
+    if request.method == "POST":
+        edition.delete()
+        messages.success(request, "Edition deleted.")
+        return redirect("crm:newsletter_plan_year", year=plan_year)
+    return render(
+        request,
+        "crm/newsletter_edition_confirm_delete.html",
+        {"edition": edition},
+    )
+
+
+@login_required
+def newsletter_analytics(request):
+    """Newsletter analytics dashboard: summary metrics and per-edition table."""
+    year_filter = request.GET.get("year")
+    selected_year = int(year_filter) if year_filter and year_filter.isdigit() else timezone.now().year
+    editions = (
+        NewsletterEdition.objects.select_related("plan")
+        .prefetch_related("analytics", "conversions")
+        .filter(plan__year=selected_year)
+        .order_by("-week_number", "day_of_week")
+    )
+
+    total_subscribers = 0
+    total_sent = 0
+    total_opens = 0
+    total_clicks = 0
+    total_ad_revenue = 0
+    total_conversions = 0
+    editions_data = []
+
+    for e in editions:
+        try:
+            a = e.analytics
+        except NewsletterAnalytics.DoesNotExist:
+            a = None
+        if a:
+            total_subscribers = max(total_subscribers, a.subscribers_count)
+            total_sent += a.sent_count
+            total_opens += a.opens_count
+            total_clicks += a.clicks_count
+            total_ad_revenue += float(a.ad_revenue or 0)
+        conv_count = e.conversions.count()
+        total_conversions += conv_count
+        editions_data.append({
+            "edition": e,
+            "analytics": a,
+            "conversions_count": conv_count,
+        })
+
+    plans = list(NewsletterPlan.objects.values_list("year", flat=True).distinct().order_by("-year"))
+
+    return render(
+        request,
+        "crm/newsletter_analytics.html",
+        {
+            "editions_data": editions_data,
+            "total_subscribers": total_subscribers,
+            "total_sent": total_sent,
+            "total_opens": total_opens,
+            "total_clicks": total_clicks,
+            "total_ad_revenue": total_ad_revenue,
+            "total_conversions": total_conversions,
+            "years": plans,
+            "selected_year": selected_year,
+        },
+    )
+
+
+# --- Newsletter templates and issues (issue creator) ---
+
+
+@login_required
+def newsletter_template_list(request):
+    """List newsletter templates."""
+    templates = NewsletterTemplate.objects.prefetch_related("sections").order_by("name")
+    return render(
+        request,
+        "crm/newsletter_template_list.html",
+        {"templates": templates},
+    )
+
+
+@login_required
+def newsletter_template_create(request):
+    """Create a new newsletter template with sections."""
+    if request.method == "POST":
+        form = NewsletterTemplateForm(request.POST)
+        formset = NewsletterTemplateSectionFormSet(request.POST)
+        if form.is_valid() and formset.is_valid():
+            template = form.save()
+            formset.instance = template
+            formset.save()
+            messages.success(request, "Template saved.")
+            return redirect("crm:newsletter_template_list")
+    else:
+        form = NewsletterTemplateForm()
+        formset = NewsletterTemplateSectionFormSet(instance=NewsletterTemplate())
+    return render(
+        request,
+        "crm/newsletter_template_form.html",
+        {"form": form, "formset": formset, "template": None},
+    )
+
+
+@login_required
+def newsletter_template_edit(request, pk):
+    """Edit a newsletter template and its sections."""
+    template = get_object_or_404(NewsletterTemplate, pk=pk)
+    sections_ordered = NewsletterTemplateSection.objects.filter(template=template).order_by("order")
+    if request.method == "POST":
+        form = NewsletterTemplateForm(request.POST, instance=template)
+        formset = NewsletterTemplateSectionFormSet(
+            request.POST,
+            instance=template,
+            queryset=sections_ordered,
+        )
+        if form.is_valid() and formset.is_valid():
+            form.save()
+            formset.save()
+            messages.success(request, "Template updated.")
+            return redirect("crm:newsletter_template_list")
+    else:
+        form = NewsletterTemplateForm(instance=template)
+        formset = NewsletterTemplateSectionFormSet(instance=template, queryset=sections_ordered)
+    return render(
+        request,
+        "crm/newsletter_template_form.html",
+        {"form": form, "formset": formset, "template": template},
+    )
+
+
+@login_required
+def newsletter_template_delete(request, pk):
+    """Delete a newsletter template."""
+    template = get_object_or_404(NewsletterTemplate, pk=pk)
+    if request.method == "POST":
+        template.delete()
+        messages.success(request, "Template deleted.")
+        return redirect("crm:newsletter_template_list")
+    return render(
+        request,
+        "crm/newsletter_template_confirm_delete.html",
+        {"template": template},
+    )
+
+
+@login_required
+def newsletter_issue_list(request):
+    """List newsletter issues (drafts and published)."""
+    if request.method == "POST":
+        # Form must not post here; redirect to create so data is not lost
+        messages.warning(
+            request,
+            "Use “New issue” to create drafts. Redirecting to the create form.",
+        )
+        return redirect("crm:newsletter_issue_create")
+    issues = (
+        NewsletterIssue.objects.select_related("owner", "created_from_template")
+        .prefetch_related("sections")
+        .order_by("-created_at")
+    )
+    return render(
+        request,
+        "crm/newsletter_issue_list.html",
+        {"issues": issues},
+    )
+
+
+@login_required
+def newsletter_issue_create(request):
+    """Create a new newsletter issue. Optional ?from_template=<pk> or ?from_edition=<pk> to prepopulate from template or plan edition."""
+    from_template = None
+    from_edition = None
+    if request.GET.get("from_template"):
+        from_template = get_object_or_404(
+            NewsletterTemplate.objects.prefetch_related("sections"),
+            pk=request.GET.get("from_template"),
+        )
+    if request.GET.get("from_edition"):
+        from_edition = get_object_or_404(
+            NewsletterEdition.objects.select_related("plan"),
+            pk=request.GET.get("from_edition"),
+        )
+    if request.method == "POST":
+        form = NewsletterIssueForm(request.POST)
+        formset = NewsletterIssueSectionFormSetForCreate(request.POST)
+        if form.is_valid() and formset.is_valid():
+            issue = form.save(commit=False)
+            issue.owner = request.user
+            edition_id = request.POST.get("from_edition")
+            if edition_id:
+                try:
+                    issue.edition_id = int(edition_id)
+                except (TypeError, ValueError):
+                    pass
+            # Auto-generate slug for drafts when left blank so save always succeeds
+            if not (issue.slug and issue.slug.strip()):
+                base = slugify(issue.title) or "newsletter"
+                base = base[:500]
+                slug = base
+                n = 0
+                while NewsletterIssue.objects.filter(slug=slug).exists():
+                    n += 1
+                    suffix = f"-{n}"
+                    slug = (base[: 500 - len(suffix)] + suffix) if len(base) + len(suffix) > 500 else base + suffix
+                issue.slug = slug
+            issue.save()
+            formset.instance = issue
+            formset.save()
+            messages.success(request, "Issue saved.")
+            return redirect("crm:newsletter_issue_detail", pk=issue.pk)
+        messages.error(request, "Please fix the errors below and try again.")
+    else:
+        if from_edition:
+            ed = from_edition
+            sd = ed.scheduled_date
+            title = (ed.weekly_theme or "").strip() or (f"Issue {sd}" if sd else "New issue")
+            form_initial = {
+                "title": title,
+                "slug": "",
+                "subject": ed.subject or "",
+                "scheduled_date": sd,
+                "status": "draft",
+            }
+            section_heading = (ed.weekly_theme or "").strip() or "Content"
+            section_body = (ed.notes or "").strip() or (ed.body_html or "").strip()
+            if section_body and section_body.startswith("<"):
+                import re
+                section_body = re.sub(r"<[^>]+>", " ", section_body)
+                section_body = re.sub(r"\s+", " ", section_body).strip()
+            initial_sections = [{"order": 0, "heading": section_heading, "body_markdown": section_body[: 2000]}]
+            form = NewsletterIssueForm(initial=form_initial)
+            from django.forms import inlineformset_factory
+            from .models import NewsletterIssueSection
+            section_formset_class = inlineformset_factory(
+                NewsletterIssue,
+                NewsletterIssueSection,
+                fields=["order", "heading", "body_markdown"],
+                extra=max(2, len(initial_sections) + 2),
+                can_delete=True,
+                formset=BaseNewsletterIssueSectionFormSet,
+                widgets={
+                    "heading": forms.TextInput(attrs={"placeholder": "Section heading", "class": "form-control"}),
+                    "body_markdown": forms.Textarea(attrs={"rows": 4, "placeholder": "Markdown content", "class": "form-control"}),
+                },
+            )
+            formset = section_formset_class(instance=NewsletterIssue(), initial=initial_sections)
+        elif from_template:
+            form = NewsletterIssueForm(initial={"created_from_template": from_template.pk, "title": from_template.name, "slug": ""})
+            initial_sections = [
+                {"order": s.order, "heading": s.heading, "body_markdown": s.body_markdown}
+                for s in from_template.sections.order_by("order")
+            ]
+            from django.forms import inlineformset_factory
+            from .models import NewsletterIssueSection
+            section_formset_class = inlineformset_factory(
+                NewsletterIssue,
+                NewsletterIssueSection,
+                fields=["order", "heading", "body_markdown"],
+                extra=max(2, len(initial_sections) + 2),
+                can_delete=True,
+                formset=BaseNewsletterIssueSectionFormSet,
+                widgets={
+                    "heading": forms.TextInput(attrs={"placeholder": "Section heading", "class": "form-control"}),
+                    "body_markdown": forms.Textarea(attrs={"rows": 4, "placeholder": "Markdown content", "class": "form-control"}),
+                },
+            )
+            formset = section_formset_class(instance=NewsletterIssue(), initial=initial_sections)
+        else:
+            form = NewsletterIssueForm()
+            formset = NewsletterIssueSectionFormSetForCreate(instance=NewsletterIssue())
+    return render(
+        request,
+        "crm/newsletter_issue_form.html",
+        {"form": form, "formset": formset, "issue": None, "from_template": from_template, "from_edition": from_edition},
+    )
+
+
+@login_required
+def newsletter_issue_edit(request, pk):
+    """Edit a newsletter issue and its sections."""
+    issue = get_object_or_404(
+        NewsletterIssue.objects.prefetch_related(
+            Prefetch("sections", queryset=NewsletterIssueSection.objects.order_by("order"))
+        ),
+        pk=pk,
+    )
+    if issue.status == "published":
+        messages.warning(request, "This issue is already published; you can still edit metadata and sections.")
+    sections_ordered = NewsletterIssueSection.objects.filter(issue=issue).order_by("order")
+    if request.method == "POST":
+        form = NewsletterIssueForm(request.POST, instance=issue)
+        formset = NewsletterIssueSectionFormSet(request.POST, instance=issue, queryset=sections_ordered)
+        if form.is_valid() and formset.is_valid():
+            form.save()
+            formset.save()
+            messages.success(request, "Issue updated.")
+            return redirect("crm:newsletter_issue_detail", pk=issue.pk)
+        messages.error(request, "Please fix the errors below and try again.")
+    else:
+        form = NewsletterIssueForm(instance=issue)
+        formset = NewsletterIssueSectionFormSet(instance=issue, queryset=sections_ordered)
+    return render(
+        request,
+        "crm/newsletter_issue_form.html",
+        {"form": form, "formset": formset, "issue": issue},
+    )
+
+
+@login_required
+def newsletter_issue_detail(request, pk):
+    """Detail view for a newsletter issue; includes Publish button."""
+    issue = get_object_or_404(
+        NewsletterIssue.objects.select_related("owner", "created_from_template", "edition", "edition__plan").prefetch_related(
+            Prefetch("sections", queryset=NewsletterIssueSection.objects.order_by("order"))
+        ),
+        pk=pk,
+    )
+    return render(
+        request,
+        "crm/newsletter_issue_detail.html",
+        {"issue": issue},
+    )
+
+
+@login_required
+def newsletter_issue_preview(request, pk):
+    """Preview the newsletter issue as HTML (as it would appear in email or on the blog)."""
+    issue = get_object_or_404(
+        NewsletterIssue.objects.prefetch_related(
+            Prefetch("sections", queryset=NewsletterIssueSection.objects.order_by("order"))
+        ),
+        pk=pk,
+    )
+    body_html = issue.render_body_html()
+    return render(
+        request,
+        "crm/newsletter_preview.html",
+        {
+            "issue": issue,
+            "body_html": body_html,
+            "title": issue.title or issue.slug,
+        },
+    )
+
+
+@login_required
+def newsletter_issue_publish(request, pk):
+    """Publish the issue: send emails to subscribers and create blog post on www.kikodo.app."""
+    if request.method != "POST":
+        return redirect("crm:newsletter_issue_detail", pk=pk)
+    issue = get_object_or_404(NewsletterIssue, pk=pk)
+    if issue.status == "published":
+        messages.info(request, "This issue is already published.")
+        return redirect("crm:newsletter_issue_detail", pk=pk)
+    from crm.email_utils import publish_newsletter_issue
+    emails_sent, blog_ok, blog_error = publish_newsletter_issue(issue)
+    if blog_ok:
+        messages.success(
+            request,
+            f"Published: {emails_sent} email(s) sent and blog post created on www.kikodo.app.",
+        )
+    else:
+        messages.warning(
+            request,
+            f"Emails sent: {emails_sent}. Blog post failed: {blog_error or 'unknown'}",
+        )
+    return redirect("crm:newsletter_issue_detail", pk=pk)
+
+
+@login_required
+def newsletter_issue_test(request, pk):
+    """Send the issue email to DEFAULT_FROM_EMAIL as a test (no status change)."""
+    if request.method != "POST":
+        return redirect("crm:newsletter_issue_detail", pk=pk)
+
+    issue = get_object_or_404(NewsletterIssue, pk=pk)
+    from django.conf import settings as django_settings
+    from django.core.mail import EmailMessage
+
+    from crm.email_utils import render_newsletter_email
+
+    from_email = getattr(django_settings, "DEFAULT_FROM_EMAIL", "").strip() or "noreply@example.com"
+    recipient = from_email
+    if not recipient:
+        messages.error(request, "DEFAULT_FROM_EMAIL is not configured; cannot send test email.")
+        return redirect("crm:newsletter_issue_detail", pk=pk)
+
+    body_html = issue.render_body_html()
+    if not body_html.strip():
+        messages.warning(request, "This issue has no renderable content; add sections and try again.")
+        return redirect("crm:newsletter_issue_detail", pk=pk)
+
+    subject = (issue.subject or issue.title or "Newsletter").strip()
+    preheader_text = (
+        (issue.preheader or "").strip()
+        or (issue.meta_description or "").strip()
+        or (issue.subject or "").strip()
+        or (issue.title or "").strip()
+        or None
+    )
+    blog_base = (getattr(django_settings, "KIKODO_BLOG_API_URL", "") or "").rstrip("/") or "https://www.kikodo.app"
+    view_url = f"{blog_base}/blog/{issue.slug}"
+    html_content = render_newsletter_email(
+        body_html,
+        contact=None,
+        preheader=preheader_text,
+        view_in_browser_url=view_url or None,
+    )
+
+    msg = EmailMessage(
+        subject=subject,
+        body=html_content,
+        from_email=from_email,
+        to=[recipient],
+        connection=None,
+    )
+    msg.content_subtype = "html"
+    try:
+        msg.send()
+        messages.success(request, f"Test email sent to {recipient}.")
+    except Exception as e:
+        messages.error(request, f"Test email failed: {e}")
+    return redirect("crm:newsletter_issue_detail", pk=pk)
+
+
+@login_required
+def newsletter_issue_delete(request, pk):
+    """Delete a newsletter issue."""
+    issue = get_object_or_404(NewsletterIssue, pk=pk)
+    if request.method == "POST":
+        issue.delete()
+        messages.success(request, "Issue deleted.")
+        return redirect("crm:newsletter_issue_list")
+    return render(
+        request,
+        "crm/newsletter_issue_confirm_delete.html",
+        {"issue": issue},
+    )

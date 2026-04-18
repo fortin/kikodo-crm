@@ -146,6 +146,12 @@
                 >
                   Edit
                 </a>
+                <a
+                  href="{% url 'crm:activity_delete' activity.pk %}"
+                  class="btn btn-sm btn-link text-decoration-none text-danger"
+                >
+                  Delete
+                </a>
               </td>
             </tr>
             {% endfor %}

@@ -1,0 +1,283 @@
+{% load static %}
+{# AI assistant: floating chat widget + shared result modal. Included by base.html. #}
+
+<style>
+  #ai-chat-fab {
+    position: fixed; bottom: 24px; right: 24px; z-index: 1050;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: var(--airtable-purple); border: none;
+    color: white; font-size: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.25);
+    transition: transform .15s, box-shadow .15s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #ai-chat-fab:hover { transform: scale(1.08); box-shadow: 0 6px 18px rgba(0,0,0,.3); }
+
+  #ai-chat-panel {
+    position: fixed; bottom: 84px; right: 24px; z-index: 1049;
+    width: 380px; max-height: 600px;
+    display: none; flex-direction: column;
+    border-radius: 12px; overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,.2);
+  }
+  #ai-chat-panel .panel-header {
+    background: var(--airtable-purple); color: white;
+    padding: 12px 16px; display: flex; align-items: center; gap: 8px;
+    font-weight: 600; font-size: 14px; flex-shrink: 0;
+  }
+  #ai-chat-panel .panel-header button {
+    margin-left: auto; background: none; border: none;
+    color: white; opacity: .7; font-size: 18px; line-height: 1; cursor: pointer;
+  }
+  #ai-chat-panel .panel-header button:hover { opacity: 1; }
+
+  #ai-chat-messages {
+    flex: 1; overflow-y: auto; padding: 12px;
+    background: var(--airtable-gray-50);
+    display: flex; flex-direction: column; gap: 8px;
+    min-height: 300px; max-height: 420px;
+  }
+  .ai-msg {
+    max-width: 88%; padding: 8px 12px; border-radius: 10px;
+    font-size: 13px; line-height: 1.5;
+  }
+  .ai-msg.user {
+    align-self: flex-end;
+    background: var(--airtable-blue); color: white;
+    border-bottom-right-radius: 3px;
+  }
+  .ai-msg.assistant {
+    align-self: flex-start;
+    background: white; color: var(--airtable-gray-800);
+    border: 1px solid var(--airtable-gray-200);
+    border-bottom-left-radius: 3px;
+  }
+  .ai-msg.assistant strong { color: var(--airtable-gray-900); }
+  .ai-msg.thinking {
+    align-self: flex-start;
+    background: var(--airtable-gray-100);
+    color: var(--airtable-gray-500); font-style: italic;
+    border: 1px solid var(--airtable-gray-200);
+  }
+  .ai-msg.error {
+    align-self: flex-start;
+    background: rgba(255,59,48,.08); color: var(--airtable-red);
+    border: 1px solid rgba(255,59,48,.2);
+  }
+
+  #ai-chat-footer {
+    background: white; padding: 10px 12px;
+    border-top: 1px solid var(--airtable-gray-200);
+    display: flex; gap: 8px; flex-shrink: 0;
+  }
+  #ai-chat-input {
+    flex: 1; border: 1px solid var(--airtable-gray-300);
+    border-radius: 20px; padding: 7px 14px; font-size: 13px;
+    outline: none;
+  }
+  #ai-chat-input:focus { border-color: var(--airtable-purple); }
+  #ai-chat-send {
+    width: 36px; height: 36px; border-radius: 50%; border: none;
+    background: var(--airtable-purple); color: white;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0;
+  }
+  #ai-chat-send:hover { background: #6b58d8; }
+  #ai-chat-send:disabled { opacity: .5; cursor: default; }
+
+  /* Shared AI result modal */
+  #ai-result-modal .modal-header { background: var(--airtable-purple); color: white; }
+  #ai-result-modal .modal-header .btn-close { filter: invert(1); }
+  #ai-result-body { font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+  #ai-result-body h1,#ai-result-body h2,#ai-result-body h3 {
+    font-size: 1rem; font-weight: 600; margin-top: .75rem; margin-bottom: .25rem;
+  }
+  #ai-result-body ul { padding-left: 1.25rem; }
+</style>
+
+{# ── Floating action button ── #}
+<button id="ai-chat-fab" title="CRM Assistant">
+  <i class="fas fa-robot"></i>
+</button>
+
+{# ── Chat panel ── #}
+<div id="ai-chat-panel" role="dialog" aria-label="CRM Assistant">
+  <div class="panel-header">
+    <i class="fas fa-robot"></i> CRM Assistant
+    <button id="ai-chat-clear" title="Clear conversation" style="font-size:13px;margin-right:4px;">
+      <i class="fas fa-trash-alt"></i>
+    </button>
+    <button id="ai-chat-close" aria-label="Close">×</button>
+  </div>
+  <div id="ai-chat-messages"></div>
+  <div id="ai-chat-footer">
+    <input id="ai-chat-input" type="text"
+           placeholder="Ask anything about your CRM…" autocomplete="off">
+    <button id="ai-chat-send" title="Send">
+      <i class="fas fa-paper-plane" style="font-size:13px;"></i>
+    </button>
+  </div>
+</div>
+
+{# ── Shared result modal (used by action buttons) ── #}
+<div class="modal fade" id="ai-result-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="ai-result-title">AI Result</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="ai-result-body"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary d-none" id="ai-result-reload"
+                onclick="location.reload()">Reload page</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const CHAT_URL = "{% url 'crm:ai_chat' %}";
+  const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+
+  // ── Simple markdown → HTML ──────────────────────────────────────────────
+  function md(text) {
+    return text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/`(.+?)`/g, '<code>$1</code>')
+      .replace(/^### (.+)$/gm, '<strong>$1</strong>')
+      .replace(/^## (.+)$/gm, '<strong>$1</strong>')
+      .replace(/^# (.+)$/gm, '<strong>$1</strong>')
+      .replace(/^[-*] (.+)$/gm, '• $1')
+      .replace(/\n/g, '<br>');
+  }
+
+  // ── Chat state ──────────────────────────────────────────────────────────
+  let messages = [];
+  let busy = false;
+
+  const fab   = document.getElementById('ai-chat-fab');
+  const panel = document.getElementById('ai-chat-panel');
+  const msgs  = document.getElementById('ai-chat-messages');
+  const input = document.getElementById('ai-chat-input');
+  const send  = document.getElementById('ai-chat-send');
+
+  fab.addEventListener('click', () => {
+    const open = panel.style.display === 'flex';
+    panel.style.display = open ? 'none' : 'flex';
+    if (!open) {
+      input.focus();
+      if (messages.length === 0) addBubble('assistant',
+        'Hi! I\'m your CRM assistant. Ask me anything — I can look up contacts, summarise companies, analyse signals, and more.');
+    }
+  });
+
+  document.getElementById('ai-chat-close').addEventListener('click', () => {
+    panel.style.display = 'none';
+  });
+
+  document.getElementById('ai-chat-clear').addEventListener('click', () => {
+    messages = [];
+    msgs.innerHTML = '';
+    addBubble('assistant', 'Conversation cleared. How can I help?');
+  });
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+  send.addEventListener('click', sendMessage);
+
+  function addBubble(role, html, raw) {
+    const div = document.createElement('div');
+    div.className = 'ai-msg ' + role;
+    div.innerHTML = raw ? html : md(html);
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return div;
+  }
+
+  function sendMessage() {
+    const text = input.value.trim();
+    if (!text || busy) return;
+    busy = true;
+    send.disabled = true;
+    input.value = '';
+
+    addBubble('user', text);
+    const thinking = addBubble('thinking', '⏳ Thinking…', true);
+
+    fetch(CHAT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify({ messages, message: text }),
+    })
+    .then(r => r.json())
+    .then(data => {
+      thinking.remove();
+      if (data.error) {
+        addBubble('error', '⚠ ' + data.error);
+      } else {
+        messages = data.messages || messages;
+        addBubble('assistant', data.response);
+      }
+    })
+    .catch(err => {
+      thinking.remove();
+      addBubble('error', '⚠ Network error: ' + err.message);
+    })
+    .finally(() => {
+      busy = false;
+      send.disabled = false;
+      input.focus();
+    });
+  }
+
+  // ── Shared AI action helper (used by page buttons) ──────────────────────
+  window.aiAction = function(url, opts) {
+    opts = opts || {};
+    const btn = opts.button;
+    const modalTitle = opts.title || 'AI Result';
+    if (btn) { btn.disabled = true; btn._origHtml = btn.innerHTML; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+
+    fetch(url, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': CSRF },
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (btn) { btn.disabled = false; btn.innerHTML = btn._origHtml; }
+      if (!data.ok) {
+        showAiModal(modalTitle, '<div class="text-danger">⚠ ' + (data.error || 'Unknown error') + '</div>', false);
+        return;
+      }
+      if (data.reload) {
+        showAiModal(modalTitle, '<div class="text-success">' + (data.message || 'Done.') + '</div>', true);
+      } else {
+        showAiModal(modalTitle, data.brief || data.message || 'Done.', false);
+      }
+    })
+    .catch(err => {
+      if (btn) { btn.disabled = false; btn.innerHTML = btn._origHtml; }
+      showAiModal(modalTitle, '<div class="text-danger">⚠ Network error: ' + err.message + '</div>', false);
+    });
+  };
+
+  function showAiModal(title, content, showReload) {
+    document.getElementById('ai-result-title').textContent = title;
+    const body = document.getElementById('ai-result-body');
+    // If content looks like markdown, render it; otherwise treat as HTML
+    const isHtml = content.trim().startsWith('<');
+    body.innerHTML = isHtml ? content : md(content);
+    const reloadBtn = document.getElementById('ai-result-reload');
+    reloadBtn.classList.toggle('d-none', !showReload);
+    new bootstrap.Modal(document.getElementById('ai-result-modal')).show();
+  }
+
+})();
+</script>

@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}{% if template %}Edit template - Kikodo CRM{% else %}New template - Kikodo CRM{% endif %}{% endblock %}
+{% block page_title %}{% if template %}Edit: {{ template.name }}{% else %}New Newsletter Template{% endif %}{% endblock %}
+
+{% block page_actions %}
+<a href="{% url 'crm:newsletter_template_list' %}" class="btn btn-outline-secondary">
+  <i class="fas fa-list"></i> Back to templates
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <form method="post" action="{% if template %}{% url 'crm:newsletter_template_edit' template.pk %}{% else %}{% url 'crm:newsletter_template_create' %}{% endif %}">
+      {% csrf_token %}
+      {{ form|crispy }}
+
+      <hr class="my-4" />
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <h5 class="mb-0">Sections <span class="text-muted small">(heading + Markdown body)</span></h5>
+        <button type="button" class="btn btn-outline-primary btn-sm" id="add-section-btn">
+          <i class="fas fa-plus"></i> Add section
+        </button>
+      </div>
+      {{ formset.management_form }}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle" id="sections-table" data-formset-prefix="{{ formset.prefix }}">
+          <thead>
+            <tr>
+              <th style="width: 80px;">Order</th>
+              <th>Heading</th>
+              <th>Body (Markdown)</th>
+              <th style="width: 100px;">Remove</th>
+            </tr>
+          </thead>
+          <tbody id="sections-tbody">
+            {% for f in formset %}
+            <tr class="section-row">
+              <td>{{ f.order }}</td>
+              <td>{{ f.heading }}</td>
+              <td>{{ f.body_markdown }}</td>
+              <td class="text-center">
+                {{ f.id }}
+                <label class="d-inline-flex align-items-center gap-1 me-1">
+                  {{ f.DELETE }}
+                  <span class="small">Remove</span>
+                </label>
+                <button type="button" class="btn btn-outline-danger btn-sm remove-section-btn" title="Remove this section">
+                  <i class="fas fa-trash-alt"></i>
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tbody id="section-row-template-container" style="display: none;">
+            <tr id="section-row-template" class="section-row">
+              <td><input type="number" name="{{ formset.prefix }}-__INDEX__-order" value="0" min="0" class="form-control form-control-sm"></td>
+              <td><input type="text" name="{{ formset.prefix }}-__INDEX__-heading" maxlength="500" class="form-control form-control-sm" placeholder="Section heading"></td>
+              <td><textarea name="{{ formset.prefix }}-__INDEX__-body_markdown" rows="4" class="form-control form-control-sm" placeholder="Markdown content"></textarea></td>
+              <td class="text-center">
+                <input type="checkbox" name="{{ formset.prefix }}-__INDEX__-DELETE" class="form-check-input section-delete-cb" style="display: none;">
+                <input type="hidden" name="{{ formset.prefix }}-__INDEX__-id" value="">
+                <button type="button" class="btn btn-outline-danger btn-sm remove-section-btn" title="Remove this section">
+                  <i class="fas fa-trash-alt"></i> Remove
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-muted small mt-1">Use "Add section" to add more rows. Check "Remove" or click Remove to drop a section (saved on submit).</p>
+
+      <div class="mt-4">
+        <button type="submit" class="btn btn-primary">{% if template %}Update template{% else %}Save template{% endif %}</button>
+        <a href="{% url 'crm:newsletter_template_list' %}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function() {
+  var table = document.getElementById('sections-table');
+  var tbody = document.getElementById('sections-tbody');
+  var templateRow = document.getElementById('section-row-template');
+  if (!table || !tbody || !templateRow) return;
+  var prefix = table.getAttribute('data-formset-prefix') || 'sections';
+
+  function setRemoveHandlers() {
+    tbody.querySelectorAll('.remove-section-btn').forEach(function(btn) {
+      if (btn._removeBound) return;
+      btn._removeBound = true;
+      btn.addEventListener('click', function() {
+        var row = btn.closest('tr');
+        var deleteCb = row.querySelector('input[name$="-DELETE"]');
+        if (deleteCb) {
+          deleteCb.checked = true;
+          row.classList.add('table-secondary');
+          row.style.opacity = '0.6';
+          btn.disabled = true;
+          btn.textContent = ' Removed';
+        }
+      });
+    });
+  }
+
+  var addBtn = document.getElementById('add-section-btn');
+  if (addBtn) {
+    addBtn.addEventListener('click', function() {
+      var totalInput = document.querySelector('input[name="' + prefix + '-TOTAL_FORMS"]');
+      if (!totalInput) return;
+      var nextIndex = parseInt(totalInput.value, 10);
+      var clone = templateRow.cloneNode(true);
+      clone.id = '';
+      clone.querySelectorAll('input, textarea').forEach(function(el) {
+        if (el.name) el.name = el.name.replace('__INDEX__', nextIndex);
+        if (el.id) el.id = el.id.replace('__INDEX__', nextIndex);
+      });
+      var orderInput = clone.querySelector('input[name$="-order"]');
+      if (orderInput) orderInput.value = nextIndex + 1;
+      tbody.appendChild(clone);
+      totalInput.value = nextIndex + 1;
+      totalInput.setAttribute('value', nextIndex + 1);
+      setRemoveHandlers();
+    });
+  }
+  setRemoveHandlers();
+})();
+</script>
+{% endblock %}

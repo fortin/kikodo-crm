@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ edition }} - Kikodo CRM{% endblock %}
+{% block page_title %}Newsletter Edition{% endblock %}
+
+{% block page_actions %}
+<a href="{% url 'crm:newsletter_edition_edit' edition.pk %}" class="btn btn-outline-primary me-2">
+  <i class="fas fa-edit"></i> Edit edition fields
+</a>
+<a href="{% url 'crm:newsletter_plan_year' year=edition.plan.year %}?quarter={{ edition.quarter }}" class="btn btn-outline-secondary me-2">
+  <i class="fas fa-calendar-alt"></i> Plan
+</a>
+<a href="{% url 'crm:newsletter_edition_delete' edition.pk %}" class="btn btn-outline-danger">
+  <i class="fas fa-trash"></i> Delete
+</a>
+{% endblock %}
+
+{% block content %}
+{% with first_issue=edition.issues.first %}
+{% if first_issue %}
+<div class="alert alert-light border mb-3">
+  <strong>Newsletter content:</strong> this edition is linked to issue
+  <a href="{% url 'crm:newsletter_issue_detail' first_issue.pk %}">{{ first_issue.title }}</a>.
+  Edit sections and email subject in
+  <a href="{% url 'crm:newsletter_issue_edit' first_issue.pk %}">Edit issue</a>.
+  Use <em>Edit edition fields</em> above for plan metadata, analytics-related fields, or legacy HTML email on the edition (used by the scheduled-edition sender when no issue flow applies).
+</div>
+{% else %}
+<div class="alert alert-light border mb-3">
+  No issue linked yet.
+  <a href="{% url 'crm:newsletter_issue_create' %}?from_edition={{ edition.pk }}" class="btn btn-sm btn-success ms-2">Create issue</a>
+  or use <em>Edit edition fields</em> for legacy subject/HTML on the edition.
+</div>
+{% endif %}
+{% endwith %}
+<div class="row">
+  <div class="col-md-6">
+    <div class="card mb-3">
+      <div class="card-header">Edition details</div>
+      <div class="card-body">
+        <p><strong>Plan:</strong> {{ edition.plan }}</p>
+        <p><strong>Quarter:</strong> {{ edition.quarter }}</p>
+        <p><strong>Week:</strong> {{ edition.week_number }}</p>
+        <p><strong>Day:</strong> {{ edition.day_of_week|default:"—" }}</p>
+        <p><strong>Date:</strong> {{ edition.scheduled_date|date:"Y-m-d"|default:"—" }}</p>
+        <p><strong>Weekly topic:</strong> {{ edition.weekly_theme|default:"—" }}</p>
+        <p><strong>Status:</strong> <span class="badge {% if edition.status == 'published' %}bg-success{% elif edition.status == 'scheduled' %}bg-info{% elif edition.status == 'cancelled' %}bg-secondary{% else %}bg-warning text-dark{% endif %}">{{ edition.get_status_display }}</span></p>
+        {% if edition.url %}
+        <p><strong>URL:</strong> <a href="{{ edition.url }}" target="_blank" rel="noopener noreferrer">{{ edition.url|truncatechars:50 }}</a></p>
+        {% endif %}
+        {% if edition.notes %}
+        <p><strong>Notes:</strong><br>{{ edition.notes|linebreaks }}</p>
+        {% endif %}
+        {% if edition.subject or edition.body_html %}
+        <hr>
+        <p class="text-muted small mb-1"><strong>Legacy edition email</strong> (scheduled send uses this HTML when set; prefer a linked issue for structured content.)</p>
+        {% if edition.subject %}<p><strong>Subject:</strong> {{ edition.subject }}</p>{% endif %}
+        {% if edition.body_html %}<p><strong>Body (preview):</strong><br><span class="small">{{ edition.body_html|truncatewords_html:40 }}</span></p>{% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card mb-3">
+      <div class="card-header">Analytics</div>
+      <div class="card-body">
+        {% if analytics %}
+        <p><strong>Subscribers:</strong> {{ analytics.subscribers_count }}</p>
+        <p><strong>Sent:</strong> {{ analytics.sent_count }}</p>
+        <p><strong>Opens (readers):</strong> {{ analytics.opens_count }}</p>
+        <p><strong>Clicks:</strong> {{ analytics.clicks_count }}</p>
+        <p><strong>Ad revenue:</strong> ${{ analytics.ad_revenue|floatformat:2 }}</p>
+        <p><strong>Unsubscribes:</strong> {{ analytics.unsubscribes_count }}</p>
+        <p><strong>Bounces:</strong> {{ analytics.bounces_count }}</p>
+        <a href="{% url 'admin:crm_newsletteranalytics_change' analytics.pk %}" class="btn btn-sm btn-outline-secondary">Edit in Admin</a>
+        {% else %}
+        <p class="text-muted">No analytics yet. <a href="{% url 'admin:crm_newsletteranalytics_changelist' %}">Add in Admin</a></p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Deal conversions ({{ conversions|length }})</div>
+  <div class="card-body p-0">
+    {% if conversions %}
+    <ul class="list-group list-group-flush">
+      {% for conv in conversions %}
+      <li class="list-group-item d-flex justify-content-between align-items-center">
+        <a href="{% url 'crm:deal_detail' conv.deal.pk %}">{{ conv.deal.name }}</a>
+        <span class="badge bg-info">{{ conv.get_attribution_type_display }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-muted p-3 mb-0">No conversions linked. Add via <a href="{% url 'admin:crm_newsletterconversion_add' %}">Admin</a>.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

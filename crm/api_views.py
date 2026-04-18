@@ -22,6 +22,8 @@ from .models import (
     Pipeline,
     PipelineStage,
     Tag,
+    WelcomeEmail,
+    WelcomeEnrollment,
 )
 from .serializers import (
     ActivitySerializer,
@@ -45,6 +47,89 @@ def config(request):
     base = (getattr(django_settings, "BASE_URL", "") or "").rstrip("/")
     api_url = base + "/api" if base else ""
     return Response({"base_url": base or None, "api_url": api_url or None})
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+@throttle_classes([])
+def newsletter_subscribe(request):
+    """
+    Public subscription API. POST JSON: {"name": "First Last", "email": "user@example.com"}.
+    Creates or updates Contact, sets newsletter_subscribed and can_marketing_email True,
+    and starts the welcome series (sends first email immediately, schedules the rest).
+    Returns 201 created or 200 updated with {"status": "subscribed", "contact_id": id}.
+    """
+    name = (request.data.get("name") or "").strip()
+    email = (request.data.get("email") or "").strip().lower()
+    if not email:
+        return Response(
+            {"error": "email is required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if "@" not in email:
+        return Response(
+            {"error": "invalid email"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    parts = name.split(None, 1)
+    first_name = parts[0] if parts else ""
+    last_name = parts[1] if len(parts) > 1 else ""
+
+    contact, created = Contact.objects.update_or_create(
+        email=email,
+        defaults={
+            "first_name": first_name,
+            "last_name": last_name,
+            "newsletter_subscribed": True,
+            "can_marketing_email": True,
+            "source": "newsletter_signup",
+        },
+    )
+
+    from .utils import pick_welcome_automation_for_new_enrollment, send_welcome_email_step
+
+    already_enrolled = WelcomeEnrollment.objects.filter(
+        contact=contact, status="active"
+    ).exists()
+    if not already_enrolled:
+        automation = pick_welcome_automation_for_new_enrollment()
+        if automation:
+            steps = list(
+                WelcomeEmail.objects.filter(automation=automation).order_by("order")
+            )
+            if steps:
+                first_step = steps[0]
+                sent = send_welcome_email_step(contact, first_step)
+                Activity.objects.create(
+                    activity_type="email",
+                    direction="outbound",
+                    subject=first_step.subject,
+                    description=first_step.body,
+                    contact=contact,
+                    status="sent",
+                    delivery_status="sent" if sent else "failed",
+                    completed_date=timezone.now(),
+                )
+                if len(steps) > 1:
+                    WelcomeEnrollment.objects.create(
+                        contact=contact,
+                        automation=automation,
+                        current_step_index=1,
+                        next_send_at=timezone.now()
+                        + timedelta(hours=steps[1].offset_hours),
+                        status="active",
+                    )
+                else:
+                    WelcomeEnrollment.objects.create(
+                        contact=contact,
+                        automation=automation,
+                        current_step_index=1,
+                        next_send_at=None,
+                        status="completed",
+                    )
+
+    payload = {"status": "subscribed", "contact_id": contact.pk}
+    return Response(payload, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
 @api_view(["POST"])

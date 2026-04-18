@@ -177,7 +177,16 @@ class AuditMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        _audit_user.set(getattr(request, "user", None))
+        user = getattr(request, "user", None)
+        # Force eager evaluation of SimpleLazyObject while still in the sync thread.
+        # Without this, asgiref's _restore_context calls ContextVar.get() in the async
+        # event loop, which triggers the lazy DB query and raises SynchronousOnlyOperation.
+        if user is not None:
+            try:
+                bool(user.is_authenticated)
+            except Exception:
+                pass
+        _audit_user.set(user)
         _audit_old.set({})
         try:
             return self.get_response(request)

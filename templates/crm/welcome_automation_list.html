@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+
+{% block title %}Welcome Automation - Kikodo CRM{% endblock %}
+{% block page_title %}Welcome Automation{% endblock %}
+
+{% block page_actions %}
+<a href="{% url 'crm:welcome_automation_create' %}" class="btn btn-primary me-2">
+  <i class="fas fa-plus"></i> New automation
+</a>
+<a href="{% url 'crm:newsletter_plan' %}" class="btn btn-outline-secondary">
+  <i class="fas fa-calendar-alt"></i> Newsletter plan
+</a>
+{% endblock %}
+
+{% block content %}
+<p class="text-muted mb-3">
+  Each automation is a separate welcome sequence. New newsletter subscribers are assigned to <strong>one</strong> active automation at random, weighted by <strong>Enrollment weight</strong> (e.g. two automations at weight 1 each ≈ 50/50 A/B).
+  Turn automations off to exclude them from assignment; active automations with no steps are skipped.
+</p>
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Name</th>
+            <th style="width: 100px;">Active</th>
+            <th style="width: 120px;">Weight</th>
+            <th style="width: 90px;">Steps</th>
+            <th style="width: 220px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in automations %}
+          <tr>
+            <td>
+              <strong>{{ a.name }}</strong>
+            </td>
+            <td>
+              {% if a.is_active %}
+              <span class="badge bg-success">On</span>
+              {% else %}
+              <span class="badge bg-secondary">Off</span>
+              {% endif %}
+            </td>
+            <td>{{ a.enrollment_weight }}</td>
+            <td>{{ a.step_count }}</td>
+            <td>
+              <a href="{% url 'crm:welcome_automation_detail' a.pk %}" class="btn btn-sm btn-outline-primary">Steps</a>
+              <a href="{% url 'crm:welcome_automation_edit' a.pk %}" class="btn btn-sm btn-outline-secondary">Settings</a>
+              <a href="{% url 'crm:welcome_automation_delete' a.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="5" class="text-center text-muted py-4">
+              No automations yet.
+              <a href="{% url 'crm:welcome_automation_create' %}">Create the first one</a>.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

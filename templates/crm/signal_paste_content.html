@@ -5,6 +5,9 @@
 {% block page_title %}Paste page content{% endblock %}
 
 {% block page_actions %}
+<a href="{% url 'crm:signal_create' %}" class="btn btn-outline-primary me-2">
+  <i class="fas fa-link"></i> Add from URL
+</a>
 <a href="{% url 'crm:signal_list' %}" class="btn btn-outline-secondary">
   <i class="fas fa-list"></i> Back to list
 </a>
@@ -15,7 +18,13 @@
   <div class="card-body">
     <p class="text-warning mb-0">
       <i class="fas fa-exclamation-triangle me-1"></i>
-      The page couldn’t be fetched (403 Forbidden). This often happens when the site requires JavaScript or blocks automated access.
+      {% if is_403 %}
+        The page couldn't be fetched (403 Forbidden). This often happens when the site requires JavaScript or blocks automated access.
+      {% elif error_message %}
+        Could not fetch URL or call LLM: {{ error_message }}. Paste the content below so the LLM can process it instead.
+      {% else %}
+        Paste the page content below so the LLM can extract headline, summary, relevance, and other fields.
+      {% endif %}
     </p>
   </div>
 </div>
@@ -25,20 +34,55 @@
     <p class="mb-3">
       Open the link in your browser, copy the page text, and paste it below. The LLM will extract headline, summary, relevance, and other fields.
     </p>
-    {% if source_url %}
+    {% if source_url and error_message %}
     <p class="small text-muted mb-3">
       <strong>URL:</strong>
       <a href="{{ source_url }}" target="_blank" rel="noopener noreferrer">{{ source_url|truncatechars:80 }}</a>
     </p>
     {% endif %}
-    <form method="post" action="{% url 'crm:signal_create' %}">
+    <form method="post" action="{% url 'crm:signal_create' %}" id="signal-paste-form">
       {% csrf_token %}
       {{ form|crispy }}
-      <button type="submit" class="btn btn-primary">
+      <button type="submit" class="btn btn-primary" id="signal-paste-submit">
         <i class="fas fa-magic"></i> Populate with LLM
       </button>
       <a href="{% url 'crm:signal_list' %}" class="btn btn-outline-secondary">Cancel</a>
     </form>
+    <!-- Progress overlay when submitting -->
+    <div id="signal-paste-overlay" class="position-fixed top-0 start-0 w-100 h-100 d-none" style="z-index: 1050; background: rgba(255,255,255,0.85); align-items: center; justify-content: center;">
+      <div class="text-center">
+        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+          <span class="visually-hidden">Loading…</span>
+        </div>
+        <p class="text-muted mb-0">Populating with LLM…</p>
+        <p class="small text-muted mt-1">This may take a moment.</p>
+      </div>
+    </div>
+    <script>
+    (function() {
+      var form = document.getElementById('signal-paste-form');
+      var overlay = document.getElementById('signal-paste-overlay');
+      var submitBtn = document.getElementById('signal-paste-submit');
+      if (form && overlay && submitBtn) {
+        form.addEventListener('submit', function(e) {
+          // First pass: show overlay, then submit programmatically so the browser paints before navigation.
+          if (form.getAttribute('data-signal-paste-submitting') === '1') {
+            return;
+          }
+          e.preventDefault();
+          overlay.classList.remove('d-none');
+          overlay.classList.add('d-flex');
+          submitBtn.disabled = true;
+          form.setAttribute('data-signal-paste-submitting', '1');
+          requestAnimationFrame(function() {
+            requestAnimationFrame(function() {
+              form.submit();
+            });
+          });
+        });
+      }
+    })();
+    </script>
   </div>
 </div>
 {% endblock %}

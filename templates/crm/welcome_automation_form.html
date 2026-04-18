@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}{% if automation %}Edit welcome automation - Kikodo CRM{% else %}New welcome automation - Kikodo CRM{% endif %}{% endblock %}
+{% block page_title %}{% if automation %}Edit: {{ automation.name }}{% else %}New welcome automation{% endif %}{% endblock %}
+
+{% block page_actions %}
+{% if automation %}
+<a href="{% url 'crm:welcome_automation_detail' automation.pk %}" class="btn btn-outline-secondary me-2">
+  <i class="fas fa-list"></i> Steps
+</a>
+{% endif %}
+<a href="{% url 'crm:welcome_automation_list' %}" class="btn btn-outline-secondary">
+  <i class="fas fa-arrow-left"></i> All automations
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <form method="post" action="">
+      {% csrf_token %}
+      {{ form|crispy }}
+      <div class="mt-3">
+        <button type="submit" class="btn btn-primary">{% if automation %}Save{% else %}Create automation{% endif %}</button>
+        <a href="{% if automation %}{% url 'crm:welcome_automation_detail' automation.pk %}{% else %}{% url 'crm:welcome_automation_list' %}{% endif %}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block title %}Delete template - Kikodo CRM{% endblock %}
+{% block page_title %}Delete template{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <p>Are you sure you want to delete the template <strong>{{ template.name }}</strong>? This cannot be undone.</p>
+    <form method="post" action="{% url 'crm:newsletter_template_delete' template.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-danger">Delete</button>
+      <a href="{% url 'crm:newsletter_template_list' %}" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

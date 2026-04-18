@@ -9,7 +9,7 @@ from urllib.parse import quote
 from django.conf import settings as django_settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives, send_mail
 from django.core.signing import Signer
 from django.db import transaction
 from django.utils import timezone
@@ -24,6 +24,7 @@ from .models import (
     PainType,
     SequenceEnrollment,
     SequenceStep,
+    WelcomeEmail,
 )
 
 
@@ -230,6 +231,7 @@ class ColumnMapper:
             "location",  # generic location handled separately
             "time_in_position",
             "time_in_company",
+            "position_date",  # position_date_1/2/3 contain dates, not job titles
             "company_name",  # only map to company name, not contact names (handled below)
             "job_details",
             "headline",
@@ -464,14 +466,47 @@ class FieldParser:
         parts = full_name.strip().split(",", 1)
         if len(parts) == 2:
             # Could be "Last, First" format (e.g., "Ó Dúláin, Máirtín")
-            # OR "First Last, Degree" format (e.g., "Anissa Perkins, MA")
-            # Check if second part looks like a degree (short, uppercase, common degree abbreviations)
+            # OR "First Last, Credentials" format (e.g., "Debbie Moysychyn, EdD, MBA, FACHE")
             second_part = parts[1].strip()
-            degree_pattern = r"^(MA|MBA|PhD|MD|JD|LLM|MS|MSc|BS|BA|BSc|BA|EdD|DDS|DVM|RN|LPN|CPA|CFA|PMP|PMI|CCNA|AWS|GCP|Azure)$"
-            if re.match(degree_pattern, second_part, re.IGNORECASE):
-                # This is "First Last, Degree" format - ignore the degree
-                full_name = parts[0].strip()  # Use only the name part
-                # Now process as "First Last" format
+            # Check if second part is credentials (single or comma-separated list)
+            # Known credentials: degrees, certs, HR credentials (PHR, SHRM-CP, SPHR, FACHE), etc.
+            credential_tokens = frozenset(
+                [
+                    "ma", "mba", "phd", "md", "jd", "llm", "ms", "msc", "bs", "ba", "bsc",
+                    "edd", "dds", "dvm", "rn", "lpn", "cpa", "cfa", "pmp", "pmi", "ccna",
+                    "aws", "gcp", "azure", "pharmd", "psyd", "dsw", "msw", "med", "dba",
+                    "fache", "phr", "shrm-cp", "shrm-scp", "sphr", "shrm", "gphr",
+                    "esq", "pe", "do", "pharmd",
+                ]
+            )
+            # Pattern for credential-like tokens: 2-15 chars, letters/numbers/hyphens, e.g. SHRM-CP
+            credential_pattern = re.compile(
+                r"^[A-Za-z0-9\-]{2,15}$", re.IGNORECASE
+            )
+
+            def _looks_like_credential(token: str) -> bool:
+                t = token.strip()
+                if not t:
+                    return False
+                t_lower = t.lower()
+                if t_lower in credential_tokens:
+                    return True
+                # Hyphenated abbreviations (SHRM-CP, SHRM-SCP) or short all-caps (EdD, MBA)
+                return (
+                    credential_pattern.match(t)
+                    and len(t) <= 15
+                    and ("-" in t or (len(t) <= 6 and t.isupper()))
+                )
+
+            # Split second part by comma - could be "EdD, MBA, FACHE" or "Máirtín" (single name)
+            second_tokens = [t.strip() for t in second_part.split(",") if t.strip()]
+            all_credentials = (
+                len(second_tokens) >= 1
+                and all(_looks_like_credential(t) for t in second_tokens)
+            )
+            if all_credentials:
+                # "First Last, Cred1, Cred2, Cred3" - use only the name part
+                full_name = parts[0].strip()
                 name_parts = full_name.strip().split()
                 # Continue processing below
             else:
@@ -755,6 +790,29 @@ class CSVImporter:
             "rows_processed": 0,
             "rows_failed": 0,
         }
+
+    # Regex for current_position_1 format: "Job Title (Company, Size: X) [date]" or with extra text after
+    _CURRENT_POSITION_PATTERN = re.compile(r"^(.+?) \(.+?\) \[.+?\]")
+
+    def _get_row_value(self, row: Dict[str, str], target_col: str) -> str:
+        """Get row value by exact or normalized column name (e.g. 'Current Position 1' -> current_position_1)."""
+        if target_col in row and row[target_col]:
+            return row[target_col].strip()
+        target_norm = self.mapper.normalize_column_name(target_col)
+        for col in row.keys():
+            if self.mapper.normalize_column_name(col) == target_norm:
+                return (row[col] or "").strip()
+        return ""
+
+    @staticmethod
+    def _parse_current_position_job_title(value: str) -> str:
+        """Extract job title from current_position_1 format if it matches.
+        E.g. 'Director (Company, Size: 51-200) [2026-01-01]' -> 'Director'
+        """
+        match = CSVImporter._CURRENT_POSITION_PATTERN.match(value.strip())
+        if match:
+            return match.group(1).strip()
+        return value
 
     @staticmethod
     def _normalized_contact_name(first: str, last: str) -> str:
@@ -1281,7 +1339,13 @@ class CSVImporter:
             for col in row.keys():
                 col_lower = col.lower()
                 # Only process actual name columns, not location or specialty columns
-                if col_lower in ["full_name", "fullname", "complete_name"] or (
+                col_norm = col_lower.replace(" ", "_")
+                if col_norm in [
+                    "full_name",
+                    "fullname",
+                    "complete_name",
+                    "contact_name",
+                ] or (
                     col_lower == "name"
                     and "company" not in col_lower
                     and "location" not in col_lower
@@ -1394,6 +1458,14 @@ class CSVImporter:
                     value = self._truncate_field_value(model_field, value, Contact)
                     contact_data[model_field] = value
                 elif model_field == "job_title":
+                    # Skip if value looks like a date (e.g. from position_date_* columns)
+                    if re.match(r"^\d{4}-\d{2}-\d{2}", value) or re.match(
+                        r"^\d{4}-\d{2}-\d{2}\s*-\s*\d{4}-\d{2}-\d{2}", value
+                    ):
+                        continue
+                    # If value is in current_position_1 format (e.g. "Director (Company, Size: X) [date]"),
+                    # extract just the job title
+                    value = self._parse_current_position_job_title(value)
                     # Validate job_title - reject if it's too long (likely wrong data)
                     if len(value) > 200:  # Reasonable max for job title
                         continue
@@ -1484,6 +1556,18 @@ class CSVImporter:
                     # Truncate string fields to model max_length
                     value = self._truncate_field_value(model_field, value, Contact)
                     contact_data[model_field] = value
+
+            # Fallback: set job_title from current_position_* or position if not already set
+            if "job_title" not in contact_data or not contact_data.get("job_title"):
+                for col in ["current_position_1", "current_position_2", "current_position_3", "position"]:
+                    raw = self._get_row_value(row, col)
+                    if raw:
+                        val = self._parse_current_position_job_title(raw)
+                        if val and len(val) <= 200:
+                            contact_data["job_title"] = self._truncate_field_value(
+                                "job_title", val, Contact
+                            )
+                            break
 
             # Fallback: set contact LinkedIn from row if not already set (handles "linkedin" column
             # and aliases even when mapping missed it, e.g. encoding or column-name quirks)
@@ -1624,6 +1708,17 @@ class CSVImporter:
                 try:
                     contact = Contact.objects.get(email=email)
                     if self.update_existing:
+                        # Ensure job_title is filled from current_position_* or position when contact has none
+                        if not (contact.job_title or "").strip():
+                            for col in ["current_position_1", "current_position_2", "current_position_3", "position"]:
+                                raw = self._get_row_value(row, col)
+                                if raw:
+                                    val = self._parse_current_position_job_title(raw)
+                                    if val and len(val) <= 200:
+                                        contact_data["job_title"] = self._truncate_field_value(
+                                            "job_title", val, Contact
+                                        )
+                                        break
                         for key, value in contact_data.items():
                             if key != "email":  # Don't update email
                                 # Truncate string values before setting
@@ -1638,7 +1733,8 @@ class CSVImporter:
                         self.stats["contacts_updated"] += 1
                     else:
                         self.warnings.append(
-                            f"Row {row_num}: Contact with email {email} already exists, skipping"
+                            f"Row {row_num}: Contact with email {email} already exists, skipping "
+                            "(enable 'Update existing' to update job title and other fields)"
                         )
                 except Contact.DoesNotExist:
                     contact = Contact.objects.create(**contact_data, owner=self.user)
@@ -1662,6 +1758,17 @@ class CSVImporter:
                         if contact is None and candidates:
                             contact = candidates[0][1]
                 if contact is not None:
+                    # Ensure job_title is filled from current_position_* or position when contact has none
+                    if not (contact.job_title or "").strip():
+                        for col in ["current_position_1", "current_position_2", "current_position_3", "position"]:
+                            raw = self._get_row_value(row, col)
+                            if raw:
+                                val = self._parse_current_position_job_title(raw)
+                                if val and len(val) <= 200:
+                                    contact_data["job_title"] = self._truncate_field_value(
+                                        "job_title", val, Contact
+                                    )
+                                    break
                     for key, value in contact_data.items():
                         if key == "email":
                             continue
@@ -1827,8 +1934,21 @@ class CSVImporter:
             return False
 
         # Reject if it's a long comma-separated list (likely specialties/industries)
-        if "," in value and len(value.split(",")) > 3:
-            return False
+        # BUT allow "Name, Cred1, Cred2, Cred3" (e.g. "Nicole Berlowski, MBA, CCP, PHR")
+        if "," in value:
+            parts = [p.strip() for p in value.split(",") if p.strip()]
+            if len(parts) > 3:
+                # Check if first part looks like a name (1-4 words, letters/hyphens)
+                first_part = parts[0]
+                name_words = first_part.split()
+                if 1 <= len(name_words) <= 4 and all(
+                    re.match(r"^[A-Za-z\-']+\.?$", w) and 1 <= len(w.rstrip(".")) <= 25
+                    for w in name_words
+                ):
+                    # Likely "FirstName LastName, Cred1, Cred2, Cred3" - allow it
+                    pass
+                else:
+                    return False
 
         # Reject if it contains common specialty/industry keywords
         specialty_keywords = [
@@ -2220,6 +2340,77 @@ def _send_sequence_email(contact, subject: str, body: str, enrollment) -> bool:
             recipient_list=[contact.email],
             fail_silently=False,
         )
+        return True
+    except Exception:
+        return False
+
+
+def pick_welcome_automation_for_new_enrollment():
+    """Choose an automation for a new subscriber: weighted random among active automations that have steps."""
+    import random
+
+    from django.db.models import Count
+
+    from .models import WelcomeAutomation
+
+    qs = (
+        WelcomeAutomation.objects.filter(is_active=True)
+        .annotate(_step_count=Count("steps"))
+        .filter(_step_count__gt=0)
+    )
+    automations = list(qs)
+    if not automations:
+        return None
+    weights = [max(1, a.enrollment_weight) for a in automations]
+    return random.choices(automations, weights=weights, k=1)[0]
+
+
+def send_welcome_email_step(contact: Contact, step: WelcomeEmail) -> bool:
+    """Send one welcome-series email to contact with HTML + plain-text fallback.
+
+    - Body is authored as Markdown in WelcomeEmail.body.
+    - We render an HTML version (with a newsletter-style template + unsubscribe footer).
+    - We also send a plain-text version (Markdown as-is + unsubscribe URL) as the fallback.
+    """
+    if not contact or not getattr(contact, "email", None) or not contact.email:
+        return False
+    # Fill in simple template variables in the Markdown body
+    body_markdown = (step.body or "").replace("{{ first_name }}", contact.first_name or "")
+
+    # Plain-text version: Markdown as-is + raw unsubscribe URL footer
+    signer = Signer()
+    token = quote(signer.sign(str(contact.pk)), safe="")
+    site_url = getattr(django_settings, "SITE_URL", "").rstrip("/")
+    unsubscribe_url = ""
+    if site_url:
+        unsubscribe_url = f"{site_url}/crm/unsubscribe/?token={token}"
+    text_body = body_markdown.rstrip()
+    if unsubscribe_url:
+        text_body += f"\n\n---\nUnsubscribe: {unsubscribe_url}"
+
+    # HTML version: convert Markdown to HTML, then wrap in the newsletter email template
+    try:
+        import markdown
+    except ImportError:
+        # Fallback: if markdown isn't available, just escape newlines for basic formatting
+        body_html = text_body.replace("\n", "<br>")
+    else:
+        body_html = markdown.markdown(body_markdown or "", extensions=["nl2br"])
+
+    from crm.email_utils import render_newsletter_email
+
+    html_content = render_newsletter_email(body_html, contact)
+
+    from_email = getattr(django_settings, "DEFAULT_FROM_EMAIL", "noreply@example.com")
+    try:
+        msg = EmailMultiAlternatives(
+            subject=step.subject,
+            body=text_body,
+            from_email=from_email,
+            to=[contact.email],
+        )
+        msg.attach_alternative(html_content, "text/html")
+        msg.send()
         return True
     except Exception:
         return False

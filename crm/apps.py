@@ -12,8 +12,12 @@ class CrmConfig(AppConfig):
 
         from .audit import connect_signals
         from .models import UserProfile
+        from .signals import connect_newsletter_edition_signals, connect_pending_activity_signals
+        from .templatetags import crm_extras  # noqa: F401 - ensure tag library is registered
 
         connect_signals()
+        connect_pending_activity_signals()
+        connect_newsletter_edition_signals()
 
         @receiver(post_save, sender=get_user_model())
         def ensure_user_profile(sender, instance, created, **kwargs):

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load crm_extras %}
 
 {% block title %}{{ company.name }} - Company - Kikodo CRM{% endblock %}
 {% block page_title %}Company: {{ company.name }}{% endblock %}
@@ -7,6 +8,11 @@
 <a href="{% url 'crm:company_edit' company.pk %}" class="btn btn-outline-primary me-2">
   <i class="fas fa-edit"></i> Edit
 </a>
+<button class="btn btn-outline-primary me-2"
+        onclick="aiAction('{% url 'crm:ai_company_brief' company.pk %}', {button: this, title: 'AI Company Brief'})"
+        title="Generate an AI brief for this company">
+  <i class="fas fa-robot"></i> AI Brief
+</button>
 <a href="{% url 'crm:activity_create' %}?company={{ company.pk }}" class="btn btn-primary">
   <i class="fas fa-plus"></i> Log Activity
 </a>
@@ -135,7 +141,7 @@
                 {% endif %}
               </div>
               {% if activity.description %}
-              <div class="small mt-1">{{ activity.description|linebreaksbr }}</div>
+              <div class="small mt-1 activity-description">{{ activity.description|markdown_to_html }}</div>
               {% endif %}
             </div>
             <div class="text-end small me-1">
@@ -166,7 +172,7 @@
                 {% endif %}
               </div>
               {% if activity.description %}
-              <div class="small mt-1">{{ activity.description|linebreaksbr }}</div>
+              <div class="small mt-1 activity-description">{{ activity.description|markdown_to_html }}</div>
               {% endif %}
               {% if activity.link %}
               <div class="small mt-1">

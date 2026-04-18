@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load crm_extras %}
 
 {% block title %}{{ deal.name }} - Deal - Kikodo CRM{% endblock %}
 {% block page_title %}Deal: {{ deal.name }}{% endblock %}
@@ -111,6 +112,9 @@
                 {{ activity.created_at|date:"M d, Y H:i" }}
                 {% if activity.contact %} · {{ activity.contact.full_name }}{% endif %}
               </div>
+              {% if activity.description %}
+              <div class="small mt-1 activity-description">{{ activity.description|markdown_to_html }}</div>
+              {% endif %}
             </div>
             <div>
               <a href="{% url 'crm:activity_edit' activity.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
