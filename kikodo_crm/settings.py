@@ -151,6 +151,10 @@ STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
 
+# Under ASGI (uvicorn), serve app staticfiles (e.g. admin CSS) from finders when DEBUG;
+# production uses STATIC_ROOT after collectstatic.
+WHITENOISE_USE_FINDERS = DEBUG
+
 # Media files
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
