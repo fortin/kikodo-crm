@@ -4,13 +4,13 @@
 {% block page_title %}{{ sequence.name }}{% endblock %}
 
 {% block page_actions %}
-<a href="{% url 'crm:sequence_edit' sequence.pk %}" class="btn btn-outline-primary me-2">
-  <i class="fas fa-edit"></i> Edit
+<a href="{% url 'crm:sequence_edit' sequence.pk %}" class="btn btn-outline-primary me-2" data-tippy-content="Edit" aria-label="Edit">
+  <i class="fas fa-edit"></i>
 </a>
-<a href="{% url 'crm:sequence_enroll' sequence.pk %}" class="btn btn-primary me-2">
-  <i class="fas fa-user-plus"></i> Add contacts
+<a href="{% url 'crm:sequence_enroll' sequence.pk %}" class="btn btn-primary me-2" data-tippy-content="Add contacts" aria-label="Add contacts">
+  <i class="fas fa-user-plus"></i>
 </a>
-<a href="{% url 'crm:sequence_list' %}" class="btn btn-outline-secondary">Back to sequences</a>
+<a href="{% url 'crm:sequence_list' %}" class="btn btn-outline-secondary" data-tippy-content="Back to sequences" aria-label="Back to sequences"><i class="fas fa-arrow-left"></i></a>
 {% endblock %}
 
 {% block content %}
@@ -68,8 +68,8 @@
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
         <span>Enrolled contacts</span>
-        <a href="{% url 'crm:sequence_enroll' sequence.pk %}" class="btn btn-sm btn-outline-primary">
-          <i class="fas fa-plus"></i> Add contacts
+        <a href="{% url 'crm:sequence_enroll' sequence.pk %}" class="btn btn-sm btn-outline-primary" data-tippy-content="Add contacts" aria-label="Add contacts">
+          <i class="fas fa-user-plus"></i>
         </a>
       </div>
       <div class="card-body p-0">

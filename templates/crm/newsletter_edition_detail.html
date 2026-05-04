@@ -4,14 +4,14 @@
 {% block page_title %}Newsletter Edition{% endblock %}
 
 {% block page_actions %}
-<a href="{% url 'crm:newsletter_edition_edit' edition.pk %}" class="btn btn-outline-primary me-2">
-  <i class="fas fa-edit"></i> Edit edition fields
+<a href="{% url 'crm:newsletter_edition_edit' edition.pk %}" class="btn btn-outline-primary me-2" data-tippy-content="Edit edition fields" aria-label="Edit edition fields">
+  <i class="fas fa-edit"></i>
 </a>
-<a href="{% url 'crm:newsletter_plan_year' year=edition.plan.year %}?quarter={{ edition.quarter }}" class="btn btn-outline-secondary me-2">
-  <i class="fas fa-calendar-alt"></i> Plan
+<a href="{% url 'crm:newsletter_plan_year' year=edition.plan.year %}?quarter={{ edition.quarter }}" class="btn btn-outline-secondary me-2" data-tippy-content="Plan" aria-label="Plan">
+  <i class="fas fa-calendar-alt"></i>
 </a>
-<a href="{% url 'crm:newsletter_edition_delete' edition.pk %}" class="btn btn-outline-danger">
-  <i class="fas fa-trash"></i> Delete
+<a href="{% url 'crm:newsletter_edition_delete' edition.pk %}" class="btn btn-outline-danger" data-tippy-content="Delete" aria-label="Delete">
+  <i class="fas fa-trash"></i>
 </a>
 {% endblock %}
 

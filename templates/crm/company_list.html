@@ -9,17 +9,17 @@
 {% include "crm/_page_search.html" %}
 {% endblock %}
 {% block page_actions %}
-<a href="{% url 'crm:company_export_csv' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-success me-2">
-  <i class="fas fa-download"></i> Export CSV
+<a href="{% url 'crm:company_export_csv' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-success me-2" data-tippy-content="Export CSV" aria-label="Export CSV">
+  <i class="fas fa-download"></i>
 </a>
-<a href="{% url 'crm:company_import_csv' %}" class="btn btn-outline-primary me-2">
-  <i class="fas fa-upload"></i> Import CSV
+<a href="{% url 'crm:company_import_csv' %}" class="btn btn-outline-primary me-2" data-tippy-content="Import CSV" aria-label="Import CSV">
+  <i class="fas fa-upload"></i>
 </a>
-<a href="{% url 'crm:company_duplicates' %}" class="btn btn-outline-secondary me-2">
-  <i class="fas fa-copy"></i> Find duplicates
+<a href="{% url 'crm:company_duplicates' %}" class="btn btn-outline-secondary me-2" data-tippy-content="Find duplicates" aria-label="Find duplicates">
+  <i class="fas fa-copy"></i>
 </a>
-<a href="{% url 'crm:company_create' %}" class="btn btn-primary">
-  <i class="fas fa-plus"></i> Add Company
+<a href="{% url 'crm:company_create' %}" class="btn btn-primary" data-tippy-content="Add Company" aria-label="Add Company">
+  <i class="fas fa-plus"></i>
 </a>
 {% endblock %}
 
@@ -31,8 +31,8 @@
   <div class="card-body p-0">
     <div id="bulk-actions-bar" class="d-flex align-items-center gap-2 px-3 py-2 bg-light border-bottom" style="display: none !important;">
       <span id="bulk-selected-count" class="fw-medium">0</span> selected
-      <button type="button" id="bulk-delete-btn" class="btn btn-outline-danger btn-sm" title="Delete selected">
-        <i class="fas fa-trash-alt"></i> Delete
+      <button type="button" id="bulk-delete-btn" class="btn btn-outline-danger btn-sm" data-tippy-content="Delete selected" aria-label="Delete selected">
+        <i class="fas fa-trash-alt"></i>
       </button>
     </div>
     <form method="get" id="company-filter-form" class="px-3 py-3 border-bottom bg-light">
@@ -292,7 +292,7 @@
               <td></td>
               <td></td>
               <td>
-                <button type="submit" class="btn btn-sm btn-primary">Add</button>
+                <button type="submit" class="btn btn-sm btn-primary" data-tippy-content="Add company" aria-label="Add company"><i class="fas fa-plus"></i></button>
               </td>
             </tr>
           </tbody>
@@ -317,8 +317,8 @@
             </label>
           </form>
           <div>
-            <button type="button" id="add-row-btn" class="btn btn-sm btn-outline-primary me-2">
-              <i class="fas fa-plus"></i> Add row
+            <button type="button" id="add-row-btn" class="btn btn-sm btn-outline-primary me-2" data-tippy-content="Add row" aria-label="Add row">
+              <i class="fas fa-plus"></i>
             </button>
             {% if page_obj %}
             <nav aria-label="Companies pagination" class="d-inline-block">

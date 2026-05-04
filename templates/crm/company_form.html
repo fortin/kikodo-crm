@@ -6,12 +6,12 @@
 
 {% block page_actions %}
 {% if form.instance.pk %}
-<a href="{% url 'crm:company_detail' form.instance.pk %}" class="btn btn-secondary">
-  <i class="fas fa-arrow-left"></i> Back to Company
+<a href="{% url 'crm:company_detail' form.instance.pk %}" class="btn btn-secondary" data-tippy-content="Back to Company" aria-label="Back to Company">
+  <i class="fas fa-arrow-left"></i>
 </a>
 {% else %}
-<a href="{% url 'crm:company_list' %}" class="btn btn-secondary">
-  <i class="fas fa-arrow-left"></i> Back to Companies
+<a href="{% url 'crm:company_list' %}" class="btn btn-secondary" data-tippy-content="Back to Companies" aria-label="Back to Companies">
+  <i class="fas fa-arrow-left"></i>
 </a>
 {% endif %}
 {% endblock %}

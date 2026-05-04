@@ -6,12 +6,12 @@
 
 {% block page_actions %}
 {% if automation %}
-<a href="{% url 'crm:welcome_automation_detail' automation.pk %}" class="btn btn-outline-secondary me-2">
-  <i class="fas fa-list"></i> Steps
+<a href="{% url 'crm:welcome_automation_detail' automation.pk %}" class="btn btn-outline-secondary me-2" data-tippy-content="Steps" aria-label="Steps">
+  <i class="fas fa-list"></i>
 </a>
 {% endif %}
-<a href="{% url 'crm:welcome_automation_list' %}" class="btn btn-outline-secondary">
-  <i class="fas fa-arrow-left"></i> All automations
+<a href="{% url 'crm:welcome_automation_list' %}" class="btn btn-outline-secondary" data-tippy-content="All automations" aria-label="All automations">
+  <i class="fas fa-arrow-left"></i>
 </a>
 {% endblock %}
 

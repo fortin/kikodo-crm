@@ -5,24 +5,25 @@
 {% block page_title %}Contact: {{ contact.full_name }}{% endblock %}
 
 {% block page_actions %}
-<a href="{% url 'crm:contact_edit' contact.pk %}" class="btn btn-outline-primary me-2">
-  <i class="fas fa-edit"></i> Edit
+<a href="{% url 'crm:contact_edit' contact.pk %}" class="btn btn-outline-primary me-2" data-tippy-content="Edit" aria-label="Edit">
+  <i class="fas fa-edit"></i>
 </a>
-<button class="btn btn-outline-primary me-2"
+<button type="button" class="btn btn-outline-primary me-2"
         onclick="aiAction('{% url 'crm:ai_enrich_contact' contact.pk %}', {button: this, title: 'Enrich Contact'})"
-        title="Use AI to fill missing company/job title from headline, bio, notes, or LinkedIn">
-  <i class="fas fa-magic"></i> Enrich
+        data-tippy-content="Enrich"
+        aria-label="Use AI to fill missing company or job title from headline, bio, notes, or LinkedIn">
+  <i class="fas fa-magic"></i>
 </button>
-<a href="{% url 'crm:contact_enroll_sequence' contact.pk %}" class="btn btn-outline-primary me-2">
-  <i class="fas fa-stream"></i> Enroll in sequence
+<a href="{% url 'crm:contact_enroll_sequence' contact.pk %}" class="btn btn-outline-primary me-2" data-tippy-content="Enroll in sequence" aria-label="Enroll in sequence">
+  <i class="fas fa-stream"></i>
 </a>
 {% if contact.email and contact.can_email_outbound %}
-<a href="{% url 'crm:contact_send_email' contact.pk %}" class="btn btn-outline-primary me-2">
-  <i class="fas fa-envelope"></i> Send Email
+<a href="{% url 'crm:contact_send_email' contact.pk %}" class="btn btn-outline-primary me-2" data-tippy-content="Send Email" aria-label="Send Email">
+  <i class="fas fa-envelope"></i>
 </a>
 {% endif %}
-<a href="{% url 'crm:activity_create' %}?contact={{ contact.pk }}" class="btn btn-primary">
-  <i class="fas fa-plus"></i> Log Activity
+<a href="{% url 'crm:activity_create' %}?contact={{ contact.pk }}" class="btn btn-primary" data-tippy-content="Log Activity" aria-label="Log Activity">
+  <i class="fas fa-plus"></i>
 </a>
 {% endblock %}
 

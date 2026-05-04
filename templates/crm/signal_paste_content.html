@@ -5,11 +5,11 @@
 {% block page_title %}Paste page content{% endblock %}
 
 {% block page_actions %}
-<a href="{% url 'crm:signal_create' %}" class="btn btn-outline-primary me-2">
-  <i class="fas fa-link"></i> Add from URL
+<a href="{% url 'crm:signal_create' %}" class="btn btn-outline-primary me-2" data-tippy-content="Add from URL" aria-label="Add from URL">
+  <i class="fas fa-link"></i>
 </a>
-<a href="{% url 'crm:signal_list' %}" class="btn btn-outline-secondary">
-  <i class="fas fa-list"></i> Back to list
+<a href="{% url 'crm:signal_list' %}" class="btn btn-outline-secondary" data-tippy-content="Back to list" aria-label="Back to list">
+  <i class="fas fa-list"></i>
 </a>
 {% endblock %}
 
@@ -43,10 +43,10 @@
     <form method="post" action="{% url 'crm:signal_create' %}" id="signal-paste-form">
       {% csrf_token %}
       {{ form|crispy }}
-      <button type="submit" class="btn btn-primary" id="signal-paste-submit">
-        <i class="fas fa-magic"></i> Populate with LLM
+      <button type="submit" class="btn btn-primary" id="signal-paste-submit" data-tippy-content="Populate with LLM" aria-label="Populate with LLM">
+        <i class="fas fa-magic"></i>
       </button>
-      <a href="{% url 'crm:signal_list' %}" class="btn btn-outline-secondary">Cancel</a>
+      <a href="{% url 'crm:signal_list' %}" class="btn btn-outline-secondary" data-tippy-content="Cancel" aria-label="Cancel"><i class="fas fa-times"></i></a>
     </form>
     <!-- Progress overlay when submitting -->
     <div id="signal-paste-overlay" class="position-fixed top-0 start-0 w-100 h-100 d-none" style="z-index: 1050; background: rgba(255,255,255,0.85); align-items: center; justify-content: center;">

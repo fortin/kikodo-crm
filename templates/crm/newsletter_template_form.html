@@ -5,8 +5,8 @@
 {% block page_title %}{% if template %}Edit: {{ template.name }}{% else %}New Newsletter Template{% endif %}{% endblock %}
 
 {% block page_actions %}
-<a href="{% url 'crm:newsletter_template_list' %}" class="btn btn-outline-secondary">
-  <i class="fas fa-list"></i> Back to templates
+<a href="{% url 'crm:newsletter_template_list' %}" class="btn btn-outline-secondary" data-tippy-content="Back to templates" aria-label="Back to templates">
+  <i class="fas fa-list"></i>
 </a>
 {% endblock %}
 
@@ -20,8 +20,8 @@
       <hr class="my-4" />
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
         <h5 class="mb-0">Sections <span class="text-muted small">(heading + Markdown body)</span></h5>
-        <button type="button" class="btn btn-outline-primary btn-sm" id="add-section-btn">
-          <i class="fas fa-plus"></i> Add section
+        <button type="button" class="btn btn-outline-primary btn-sm" id="add-section-btn" data-tippy-content="Add section" aria-label="Add section">
+          <i class="fas fa-plus"></i>
         </button>
       </div>
       {{ formset.management_form }}
@@ -47,7 +47,7 @@
                   {{ f.DELETE }}
                   <span class="small">Remove</span>
                 </label>
-                <button type="button" class="btn btn-outline-danger btn-sm remove-section-btn" title="Remove this section">
+                <button type="button" class="btn btn-outline-danger btn-sm remove-section-btn" data-tippy-content="Remove this section" aria-label="Remove this section">
                   <i class="fas fa-trash-alt"></i>
                 </button>
               </td>
@@ -62,8 +62,8 @@
               <td class="text-center">
                 <input type="checkbox" name="{{ formset.prefix }}-__INDEX__-DELETE" class="form-check-input section-delete-cb" style="display: none;">
                 <input type="hidden" name="{{ formset.prefix }}-__INDEX__-id" value="">
-                <button type="button" class="btn btn-outline-danger btn-sm remove-section-btn" title="Remove this section">
-                  <i class="fas fa-trash-alt"></i> Remove
+                <button type="button" class="btn btn-outline-danger btn-sm remove-section-btn" data-tippy-content="Remove this section" aria-label="Remove this section">
+                  <i class="fas fa-trash-alt"></i>
                 </button>
               </td>
             </tr>
@@ -100,7 +100,8 @@
           row.classList.add('table-secondary');
           row.style.opacity = '0.6';
           btn.disabled = true;
-          btn.textContent = ' Removed';
+          btn.innerHTML = '<i class="fas fa-check text-secondary"></i>';
+          btn.setAttribute('aria-label', 'Removed');
         }
       });
     });

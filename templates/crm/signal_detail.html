@@ -4,14 +4,14 @@
 {% block page_title %}Signal{% endblock %}
 
 {% block page_actions %}
-<a href="{% url 'crm:signal_edit' signal.pk %}" class="btn btn-outline-primary me-2">
-  <i class="fas fa-edit"></i> Edit
+<a href="{% url 'crm:signal_edit' signal.pk %}" class="btn btn-outline-primary me-2" data-tippy-content="Edit" aria-label="Edit">
+  <i class="fas fa-edit"></i>
 </a>
-<a href="{% url 'crm:signal_delete' signal.pk %}" class="btn btn-outline-danger me-2">
-  <i class="fas fa-trash-alt"></i> Delete
+<a href="{% url 'crm:signal_delete' signal.pk %}" class="btn btn-outline-danger me-2" data-tippy-content="Delete" aria-label="Delete">
+  <i class="fas fa-trash-alt"></i>
 </a>
-<a href="{% url 'crm:signal_list' %}" class="btn btn-outline-secondary">
-  <i class="fas fa-list"></i> Back to list
+<a href="{% url 'crm:signal_list' %}" class="btn btn-outline-secondary" data-tippy-content="Back to list" aria-label="Back to list">
+  <i class="fas fa-list"></i>
 </a>
 {% endblock %}
 

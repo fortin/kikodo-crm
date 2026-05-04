@@ -6,12 +6,12 @@
 
 {% block page_actions %}
 {% if form.instance.pk %}
-<a href="{% url 'crm:contact_detail' form.instance.pk %}" class="btn btn-secondary">
-  <i class="fas fa-arrow-left"></i> Back to Contact
+<a href="{% url 'crm:contact_detail' form.instance.pk %}" class="btn btn-secondary" data-tippy-content="Back to Contact" aria-label="Back to Contact">
+  <i class="fas fa-arrow-left"></i>
 </a>
 {% else %}
-<a href="{% url 'crm:contact_list' %}" class="btn btn-secondary">
-  <i class="fas fa-arrow-left"></i> Back to Contacts
+<a href="{% url 'crm:contact_list' %}" class="btn btn-secondary" data-tippy-content="Back to Contacts" aria-label="Back to Contacts">
+  <i class="fas fa-arrow-left"></i>
 </a>
 {% endif %}
 {% endblock %}

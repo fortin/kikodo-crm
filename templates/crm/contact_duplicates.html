@@ -4,8 +4,8 @@
 {% block page_title %}Duplicate contacts{% endblock %}
 
 {% block page_actions %}
-<a href="{% url 'crm:contact_list' %}" class="btn btn-secondary">
-  <i class="fas fa-arrow-left"></i> Back to Contacts
+<a href="{% url 'crm:contact_list' %}" class="btn btn-secondary" data-tippy-content="Back to Contacts" aria-label="Back to Contacts">
+  <i class="fas fa-arrow-left"></i>
 </a>
 {% endblock %}
 

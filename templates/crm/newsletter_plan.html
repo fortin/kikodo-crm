@@ -6,19 +6,19 @@
 {% block page_title %}Newsletter Plan {{ plan.year }}{% endblock %}
 
 {% block page_actions %}
-<a href="{% url 'crm:newsletter_issue_list' %}" class="btn btn-primary me-2">
-  <i class="fas fa-file-alt"></i> Issues
+<a href="{% url 'crm:newsletter_issue_list' %}" class="btn btn-primary me-2" data-tippy-content="Issues" aria-label="Issues">
+  <i class="fas fa-file-alt"></i>
 </a>
-<a href="{% url 'crm:welcome_automation_list' %}" class="btn btn-outline-secondary me-2">
-  <i class="fas fa-magic"></i> Welcome Automation
+<a href="{% url 'crm:welcome_automation_list' %}" class="btn btn-outline-secondary me-2" data-tippy-content="Welcome Automation" aria-label="Welcome Automation">
+  <i class="fas fa-magic"></i>
 </a>
-<a href="{% url 'crm:newsletter_analytics' %}" class="btn btn-outline-primary me-2">
-  <i class="fas fa-chart-bar"></i> Analytics
+<a href="{% url 'crm:newsletter_analytics' %}" class="btn btn-outline-primary me-2" data-tippy-content="Analytics" aria-label="Analytics">
+  <i class="fas fa-chart-bar"></i>
 </a>
 {% if prev_year >= 2020 %}
-<a href="{% url 'crm:newsletter_plan_year' year=prev_year %}" class="btn btn-outline-secondary me-2">{{ prev_year }}</a>
+<a href="{% url 'crm:newsletter_plan_year' year=prev_year %}" class="btn btn-outline-secondary me-2" data-tippy-content="Previous year ({{ prev_year }})" aria-label="Previous year {{ prev_year }}"><i class="fas fa-chevron-left"></i></a>
 {% endif %}
-<a href="{% url 'crm:newsletter_plan_year' year=next_year %}" class="btn btn-outline-secondary">{{ next_year }}</a>
+<a href="{% url 'crm:newsletter_plan_year' year=next_year %}" class="btn btn-outline-secondary" data-tippy-content="Next year ({{ next_year }})" aria-label="Next year {{ next_year }}"><i class="fas fa-chevron-right"></i></a>
 {% endblock %}
 
 {% block content %}
@@ -45,7 +45,7 @@
       <input type="hidden" name="action" value="update_quarter_theme">
       <input type="hidden" name="quarter" value="{{ active_quarter }}">
       <input type="text" name="theme" class="form-control form-control-sm" placeholder="Quarter theme" value="{{ quarter_themes|get_item:active_quarter }}" style="min-width: 200px;">
-      <button type="submit" class="btn btn-sm btn-outline-primary">Update theme</button>
+      <button type="submit" class="btn btn-sm btn-outline-primary" data-tippy-content="Update theme" aria-label="Update theme"><i class="fas fa-palette"></i></button>
     </form>
   </div>
   <div class="card-body p-0">
@@ -110,7 +110,7 @@
                 {% endfor %}
               </td>
               <td>
-                <button type="submit" class="btn btn-sm btn-outline-primary">Save row</button>
+                <button type="submit" class="btn btn-sm btn-outline-primary" data-tippy-content="Save row" aria-label="Save row"><i class="fas fa-save"></i></button>
                 <a href="{% url 'crm:newsletter_edition_detail' edition.pk %}" class="btn btn-sm btn-link">Edition detail</a>
                 <a href="{% url 'crm:newsletter_edition_delete' edition.pk %}" class="btn btn-sm btn-link text-danger">Delete</a>
               </td>
@@ -130,8 +130,8 @@
         {% csrf_token %}
         <input type="hidden" name="action" value="add_edition">
         {{ edition_form|crispy }}
-        <button type="submit" class="btn btn-primary">
-          <i class="fas fa-plus"></i> Add edition
+        <button type="submit" class="btn btn-primary" data-tippy-content="Add edition" aria-label="Add edition">
+          <i class="fas fa-plus"></i>
         </button>
       </form>
     </div>

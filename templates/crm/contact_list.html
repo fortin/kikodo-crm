@@ -9,17 +9,17 @@
 {% include "crm/_page_search.html" %}
 {% endblock %}
 {% block page_actions %}
-<a href="{% url 'crm:contact_export_csv' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-success me-2">
-    <i class="fas fa-download"></i> Export CSV
+<a href="{% url 'crm:contact_export_csv' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-success me-2" data-tippy-content="Export CSV" aria-label="Export CSV">
+    <i class="fas fa-download"></i>
 </a>
-<a href="{% url 'crm:contact_import_csv' %}" class="btn btn-outline-primary me-2">
-    <i class="fas fa-upload"></i> Import CSV
+<a href="{% url 'crm:contact_import_csv' %}" class="btn btn-outline-primary me-2" data-tippy-content="Import CSV" aria-label="Import CSV">
+    <i class="fas fa-upload"></i>
 </a>
-<a href="{% url 'crm:contact_duplicates' %}" class="btn btn-outline-secondary me-2">
-    <i class="fas fa-copy"></i> Find duplicates
+<a href="{% url 'crm:contact_duplicates' %}" class="btn btn-outline-secondary me-2" data-tippy-content="Find duplicates" aria-label="Find duplicates">
+    <i class="fas fa-copy"></i>
 </a>
-<a href="{% url 'crm:contact_create' %}" class="btn btn-primary">
-    <i class="fas fa-plus"></i> Add Contact
+<a href="{% url 'crm:contact_create' %}" class="btn btn-primary" data-tippy-content="Add Contact" aria-label="Add Contact">
+    <i class="fas fa-plus"></i>
 </a>
 {% endblock %}
 
@@ -34,11 +34,11 @@
     <div class="card-body p-0">
         <div id="bulk-actions-bar" class="d-flex align-items-center gap-2 px-3 py-2 bg-light border-bottom" style="display: none !important;">
             <span id="bulk-selected-count" class="fw-medium">0</span> selected
-            <button type="button" id="bulk-enrich-btn" class="btn btn-outline-primary btn-sm" title="Enrich selected with LLM (company/job title from headline, bio, etc.)">
-                <i class="fas fa-magic"></i> Enrich
+            <button type="button" id="bulk-enrich-btn" class="btn btn-outline-primary btn-sm" data-tippy-content="Enrich selected with LLM" aria-label="Enrich selected with LLM">
+                <i class="fas fa-magic"></i>
             </button>
-            <button type="button" id="bulk-delete-btn" class="btn btn-outline-danger btn-sm" title="Delete selected">
-                <i class="fas fa-trash-alt"></i> Delete
+            <button type="button" id="bulk-delete-btn" class="btn btn-outline-danger btn-sm" data-tippy-content="Delete selected" aria-label="Delete selected">
+                <i class="fas fa-trash-alt"></i>
             </button>
         </div>
         <form method="get" id="contact-filter-form" class="px-3 py-2 border-bottom bg-light">
@@ -135,8 +135,8 @@
                             </li>
                             <li><hr class="dropdown-divider"></li>
                             <li class="d-flex gap-1">
-                                <button type="submit" class="btn btn-sm btn-primary flex-grow-1">Apply</button>
-                                <a href="{% url 'crm:contact_list' %}" class="btn btn-sm btn-outline-secondary">Reset</a>
+                                <button type="submit" class="btn btn-sm btn-primary flex-grow-1" data-tippy-content="Apply filters" aria-label="Apply filters"><i class="fas fa-check"></i></button>
+                                <a href="{% url 'crm:contact_list' %}" class="btn btn-sm btn-outline-secondary" data-tippy-content="Reset filters" aria-label="Reset filters"><i class="fas fa-undo"></i></a>
                             </li>
                         </ul>
                     </div>
@@ -274,7 +274,7 @@
                             <td></td>
                             <td></td>
                             <td></td>
-                            <td><button type="submit" class="btn btn-sm btn-primary">Add</button></td>
+                            <td><button type="submit" class="btn btn-sm btn-primary" data-tippy-content="Add contact" aria-label="Add contact"><i class="fas fa-plus"></i></button></td>
                         </tr>
                         </tbody>
                     </table>
@@ -298,8 +298,8 @@
                             </label>
                         </form>
                         <div>
-                            <button type="button" id="add-row-btn" class="btn btn-sm btn-outline-primary me-2">
-                                <i class="fas fa-plus"></i> Add row
+                            <button type="button" id="add-row-btn" class="btn btn-sm btn-outline-primary me-2" data-tippy-content="Add row" aria-label="Add row">
+                                <i class="fas fa-plus"></i>
                             </button>
                             {% if page_obj %}
                             <nav aria-label="Contacts pagination" class="d-inline-block">

@@ -4,15 +4,15 @@
 {% block page_title %}Deals Kanban{% if pipeline %} · {{ pipeline.name }}{% endif %}{% endblock %}
 
 {% block page_actions %}
-<a href="{% url 'crm:deal_list' %}" class="btn btn-outline-primary me-2">
-  <i class="fas fa-list"></i> List
+<a href="{% url 'crm:deal_list' %}" class="btn btn-outline-primary me-2" data-tippy-content="List view" aria-label="List view">
+  <i class="fas fa-list"></i>
 </a>
-<a href="{% url 'crm:deal_create' %}" class="btn btn-primary">
-  <i class="fas fa-plus"></i> Add Deal
+<a href="{% url 'crm:deal_create' %}" class="btn btn-primary" data-tippy-content="Add Deal" aria-label="Add Deal">
+  <i class="fas fa-plus"></i>
 </a>
 {% if pipelines %}
 <div class="btn-group ms-2">
-  <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Pipeline</button>
+  <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-tippy-content="Pipeline" aria-label="Pipeline"><i class="fas fa-stream"></i></button>
   <ul class="dropdown-menu">
     <li><a class="dropdown-item {% if not pipeline %}active{% endif %}" href="{% url 'crm:deal_kanban' %}">Default</a></li>
     {% for p in pipelines %}

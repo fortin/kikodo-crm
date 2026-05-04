@@ -4,8 +4,8 @@
 {% block page_title %}Duplicate companies{% endblock %}
 
 {% block page_actions %}
-<a href="{% url 'crm:company_list' %}" class="btn btn-secondary">
-  <i class="fas fa-arrow-left"></i> Back to Companies
+<a href="{% url 'crm:company_list' %}" class="btn btn-secondary" data-tippy-content="Back to Companies" aria-label="Back to Companies">
+  <i class="fas fa-arrow-left"></i>
 </a>
 {% endblock %}
 

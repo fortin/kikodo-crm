@@ -4,14 +4,14 @@
 {% block page_title %}{{ automation.name }}{% endblock %}
 
 {% block page_actions %}
-<a href="{% url 'crm:welcome_step_create' automation_pk=automation.pk %}" class="btn btn-primary me-2">
-  <i class="fas fa-plus"></i> New step
+<a href="{% url 'crm:welcome_step_create' automation_pk=automation.pk %}" class="btn btn-primary me-2" data-tippy-content="New step" aria-label="New step">
+  <i class="fas fa-plus"></i>
 </a>
-<a href="{% url 'crm:welcome_automation_edit' automation.pk %}" class="btn btn-outline-secondary me-2">
-  <i class="fas fa-cog"></i> Settings
+<a href="{% url 'crm:welcome_automation_edit' automation.pk %}" class="btn btn-outline-secondary me-2" data-tippy-content="Settings" aria-label="Settings">
+  <i class="fas fa-cog"></i>
 </a>
-<a href="{% url 'crm:welcome_automation_list' %}" class="btn btn-outline-secondary">
-  <i class="fas fa-arrow-left"></i> All automations
+<a href="{% url 'crm:welcome_automation_list' %}" class="btn btn-outline-secondary" data-tippy-content="All automations" aria-label="All automations">
+  <i class="fas fa-arrow-left"></i>
 </a>
 {% endblock %}
 

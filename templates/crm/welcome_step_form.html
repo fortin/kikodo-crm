@@ -5,8 +5,8 @@
 {% block page_title %}{% if step %}Edit step {{ step.order }}{% else %}New step — {{ automation.name }}{% endif %}{% endblock %}
 
 {% block page_actions %}
-<a href="{% url 'crm:welcome_automation_detail' automation.pk %}" class="btn btn-outline-secondary">
-  <i class="fas fa-arrow-left"></i> Back to {{ automation.name }}
+<a href="{% url 'crm:welcome_automation_detail' automation.pk %}" class="btn btn-outline-secondary" data-tippy-content="Back to {{ automation.name }}" aria-label="Back to {{ automation.name }}">
+  <i class="fas fa-arrow-left"></i>
 </a>
 {% endblock %}
 

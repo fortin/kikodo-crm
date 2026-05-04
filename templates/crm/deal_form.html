@@ -5,12 +5,12 @@
 
 {% block page_actions %}
 {% if is_edit and deal %}
-<a href="{% url 'crm:deal_detail' deal.pk %}" class="btn btn-secondary">
-  <i class="fas fa-arrow-left"></i> Back to Deal
+<a href="{% url 'crm:deal_detail' deal.pk %}" class="btn btn-secondary" data-tippy-content="Back to Deal" aria-label="Back to Deal">
+  <i class="fas fa-arrow-left"></i>
 </a>
 {% else %}
-<a href="{% url 'crm:deal_list' %}" class="btn btn-secondary">
-  <i class="fas fa-arrow-left"></i> Back to Deals
+<a href="{% url 'crm:deal_list' %}" class="btn btn-secondary" data-tippy-content="Back to Deals" aria-label="Back to Deals">
+  <i class="fas fa-arrow-left"></i>
 </a>
 {% endif %}
 {% endblock %}
