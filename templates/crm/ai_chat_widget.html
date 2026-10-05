@@ -37,33 +37,49 @@
     display: flex; flex-direction: column; gap: 8px;
     min-height: 300px; max-height: 420px;
   }
+  .ai-msg-wrap {
+    display: flex; flex-direction: column; gap: 2px;
+    max-width: 88%;
+  }
+  .ai-msg-wrap.user { align-self: flex-end; align-items: flex-end; }
+  .ai-msg-wrap.assistant { align-self: flex-start; align-items: flex-start; }
+  .ai-msg-wrap.thinking,
+  .ai-msg-wrap.error { align-self: flex-start; max-width: 88%; }
   .ai-msg {
-    max-width: 88%; padding: 8px 12px; border-radius: 10px;
+    padding: 8px 12px; border-radius: 10px;
     font-size: 13px; line-height: 1.5;
   }
   .ai-msg.user {
-    align-self: flex-end;
     background: var(--airtable-blue); color: white;
     border-bottom-right-radius: 3px;
   }
   .ai-msg.assistant {
-    align-self: flex-start;
     background: white; color: var(--airtable-gray-800);
     border: 1px solid var(--airtable-gray-200);
     border-bottom-left-radius: 3px;
   }
   .ai-msg.assistant strong { color: var(--airtable-gray-900); }
   .ai-msg.thinking {
-    align-self: flex-start;
     background: var(--airtable-gray-100);
     color: var(--airtable-gray-500); font-style: italic;
     border: 1px solid var(--airtable-gray-200);
   }
   .ai-msg.error {
-    align-self: flex-start;
     background: rgba(255,59,48,.08); color: var(--airtable-red);
     border: 1px solid rgba(255,59,48,.2);
   }
+  .ai-msg-copy {
+    border: none; background: none; padding: 0 4px;
+    font-size: 11px; line-height: 1;
+    color: var(--airtable-gray-400); cursor: pointer;
+    display: inline-flex; align-items: center; gap: 4px;
+    opacity: .5; transition: opacity .15s, color .15s;
+  }
+  .ai-msg-wrap:hover .ai-msg-copy,
+  .ai-msg-copy:focus-visible,
+  .ai-msg-copy.copied { opacity: 1; }
+  .ai-msg-copy:hover { color: var(--airtable-gray-600); }
+  .ai-msg-wrap.user .ai-msg-copy:hover { color: var(--airtable-blue); }
 
   #ai-chat-footer {
     background: white; padding: 10px 12px;
@@ -96,14 +112,15 @@
 </style>
 
 {# ── Floating action button ── #}
-<button id="ai-chat-fab" title="CRM Assistant">
+<button id="ai-chat-fab" title="KikoAI - CRM Assistant">
   <i class="fas fa-robot"></i>
 </button>
 
 {# ── Chat panel ── #}
 <div id="ai-chat-panel" role="dialog" aria-label="CRM Assistant">
   <div class="panel-header">
-    <i class="fas fa-robot"></i> CRM Assistant
+    <i class="fas fa-robot"></i> KikoAI - CRM Assistant
+    <span id="ai-chat-backend" style="font-size:11px;font-weight:400;opacity:.85;margin-left:4px;"></span>
     <button id="ai-chat-clear" title="Clear conversation" style="font-size:13px;margin-right:4px;">
       <i class="fas fa-trash-alt"></i>
     </button>
@@ -174,7 +191,7 @@
     if (!open) {
       input.focus();
       if (messages.length === 0) addBubble('assistant',
-        'Hi! I\'m your CRM assistant. Ask me anything — I can look up contacts, summarise companies, analyse signals, and more.');
+        'Hi! I\'m KikoAI, your CRM assistant. Ask me anything — I can look up contacts, summarise companies, analyse signals, and more.');
     }
   });
 
@@ -193,13 +210,61 @@
   });
   send.addEventListener('click', sendMessage);
 
-  function addBubble(role, html, raw) {
+  function copyMessageText(text, btn) {
+    const done = () => {
+      const label = btn.querySelector('span');
+      const prev = label ? label.textContent : '';
+      if (label) label.textContent = 'Copied';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        if (label) label.textContent = prev || 'Copy';
+        btn.classList.remove('copied');
+      }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => {
+        fallbackCopy(text);
+        done();
+      });
+    } else {
+      fallbackCopy(text);
+      done();
+    }
+  }
+
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+
+  function addBubble(role, text, raw) {
+    const wrap = document.createElement('div');
+    wrap.className = 'ai-msg-wrap ' + role;
+
     const div = document.createElement('div');
     div.className = 'ai-msg ' + role;
-    div.innerHTML = raw ? html : md(html);
-    msgs.appendChild(div);
+    div.innerHTML = raw ? text : md(text);
+    wrap.appendChild(div);
+
+    if ((role === 'user' || role === 'assistant') && text) {
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'ai-msg-copy';
+      copyBtn.title = 'Copy to clipboard';
+      copyBtn.innerHTML = '<i class="fas fa-copy" style="font-size:10px;"></i><span>Copy</span>';
+      copyBtn.addEventListener('click', () => copyMessageText(text, copyBtn));
+      wrap.appendChild(copyBtn);
+    }
+
+    msgs.appendChild(wrap);
     msgs.scrollTop = msgs.scrollHeight;
-    return div;
+    return wrap;
   }
 
   function sendMessage() {
@@ -220,6 +285,9 @@
     .then(r => r.json())
     .then(data => {
       thinking.remove();
+      if (data.backend) {
+        document.getElementById('ai-chat-backend').textContent = '(' + data.backend + ')';
+      }
       if (data.error) {
         addBubble('error', '⚠ ' + data.error);
       } else {

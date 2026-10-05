@@ -5,14 +5,21 @@ Uses the Anthropic API with tool use. Each call to run_chat() runs the full
 tool-call loop (Claude → tool → result → Claude) until Claude produces a
 final text response or hits max_iterations.
 
-Falls back gracefully when AI_BACKEND=ollama (no tool use, plain chat).
+Falls back gracefully when AI_BACKEND=ollama (uses Ollama /api/chat with tool calling).
 """
 
 import json
 import logging
 
-from .ai_connector import _get_anthropic_api_key, _get_anthropic_model, get_ai_backend
-from .mcp_app import _dispatch
+from .ai_connector import (
+    _get_anthropic_api_key,
+    _get_anthropic_model,
+    _get_ollama_base_url,
+    _get_ollama_model,
+    get_ai_backend,
+)
+from .ai_db import DB_TOOL_SCHEMAS
+from .ai_tools import execute_tool
 
 logger = logging.getLogger("crm")
 
@@ -25,14 +32,25 @@ You help the user with:
 - Summarising pain signals and suggesting talking points
 - Suggesting outreach sequences and next best actions
 
-You have access to the CRM database through tools. Always use the tools to
-fetch real data before answering questions about specific records.
+CRITICAL: You have full read access to the CRM database through your tools.
+NEVER tell the user you lack access to their data. For any question about
+contacts, companies, signals, deals, newsletters, or other CRM records, you
+MUST call the appropriate tool before answering.
+
+You have access to the full CRM database through tools:
+- list_models / describe_model — discover models and their fields
+- query_records / get_record / count_records — query any model (newsletters,
+  sequences, pipelines, analytics, etc.)
+- get_signals — list market signals; count_records with model Signal also works
+- Specialised tools (search_contacts, create_contact, create_company, create_deal, …) for common CRM tasks
+
+For unfamiliar data, call list_models then describe_model before querying.
 
 Keep responses concise, structured, and actionable. Use markdown for formatting
 (bullet points, bold headings). When you update data, confirm exactly what changed."""
 
-# Tool definitions in Anthropic API format (mirrors the MCP tool schemas)
-_TOOLS = [
+# Generic DB tools first, then specialised CRM tools (mirrors MCP tool schemas)
+_TOOLS = DB_TOOL_SCHEMAS + [
     {
         "name": "search_contacts",
         "description": "Search CRM contacts by name, email, or company.",
@@ -52,6 +70,35 @@ _TOOLS = [
             "type": "object",
             "properties": {"contact_id": {"type": "integer"}},
             "required": ["contact_id"],
+        },
+    },
+    {
+        "name": "create_contact",
+        "description": "Create a new CRM contact. Prefer company_id if the company already exists.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "first_name": {"type": "string"},
+                "last_name": {"type": "string"},
+                "email": {"type": "string"},
+                "phone": {"type": "string"},
+                "job_title": {"type": "string"},
+                "company_id": {"type": "integer"},
+                "company_name": {
+                    "type": "string",
+                    "description": "Create or attach by company name if company_id is unknown",
+                },
+                "linkedin_url": {"type": "string"},
+                "status": {
+                    "type": "string",
+                    "enum": ["lead", "prospect", "customer", "inactive"],
+                    "default": "lead",
+                },
+                "headline": {"type": "string"},
+                "notes": {"type": "string"},
+                "source": {"type": "string"},
+            },
+            "required": ["first_name", "last_name"],
         },
     },
     {
@@ -91,6 +138,29 @@ _TOOLS = [
             "type": "object",
             "properties": {"company_id": {"type": "integer"}},
             "required": ["company_id"],
+        },
+    },
+    {
+        "name": "create_company",
+        "description": "Create a new CRM company. Fails if a company with the same name already exists.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "industry": {"type": "string"},
+                "website": {"type": "string"},
+                "phone": {"type": "string"},
+                "email": {"type": "string"},
+                "city": {"type": "string"},
+                "state": {"type": "string"},
+                "country": {"type": "string"},
+                "description": {"type": "string"},
+                "linkedin_url": {"type": "string"},
+                "employee_count": {"type": "integer"},
+                "icp_fit_score": {"type": "number"},
+                "icp_fit_tier": {"type": "string", "enum": ["A", "B", "C", "D"]},
+            },
+            "required": ["name"],
         },
     },
     {
@@ -196,6 +266,45 @@ _TOOLS = [
         },
     },
     {
+        "name": "create_deal",
+        "description": "Create a new deal/opportunity. Requires an existing contact. Company is taken from the contact unless company_id is set. expected_close_date defaults to 30 days from today.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "contact_id": {"type": "integer"},
+                "company_id": {"type": "integer"},
+                "amount": {"type": "number", "default": 0},
+                "currency": {"type": "string", "default": "USD"},
+                "stage": {
+                    "type": "string",
+                    "enum": [
+                        "prospecting",
+                        "qualification",
+                        "proposal",
+                        "negotiation",
+                        "closed_won",
+                        "closed_lost",
+                    ],
+                    "default": "prospecting",
+                },
+                "probability": {"type": "integer", "default": 0},
+                "priority": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high"],
+                    "default": "medium",
+                },
+                "expected_close_date": {
+                    "type": "string",
+                    "description": "YYYY-MM-DD; defaults to 30 days from today",
+                },
+                "description": {"type": "string"},
+                "notes": {"type": "string"},
+            },
+            "required": ["name", "contact_id"],
+        },
+    },
+    {
         "name": "get_deals",
         "description": "List deals filtered by stage, company, or contact.",
         "input_schema": {
@@ -259,6 +368,97 @@ def _content_to_text(content) -> str:
     return str(content)
 
 
+def _tools_for_ollama() -> list[dict]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": tool["description"],
+                "parameters": tool["input_schema"],
+            },
+        }
+        for tool in _TOOLS
+    ]
+
+
+def _parse_tool_arguments(raw) -> dict:
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        return json.loads(raw)
+    return {}
+
+
+def _run_ollama_chat(messages: list, max_iterations: int = 8) -> dict:
+    """Agentic loop via Ollama /api/chat with native tool calling."""
+    import requests
+
+    base_url = _get_ollama_base_url().rstrip("/")
+    model = _get_ollama_model()
+    ollama_messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
+    for message in messages:
+        ollama_messages.append({"role": message["role"], "content": message["content"]})
+
+    tools = _tools_for_ollama()
+
+    for _ in range(max_iterations):
+        try:
+            resp = requests.post(
+                f"{base_url}/api/chat",
+                json={
+                    "model": model,
+                    "messages": ollama_messages,
+                    "tools": tools,
+                    "stream": False,
+                },
+                timeout=300,
+            )
+            if resp.status_code == 404 and "localhost" in base_url:
+                resp = requests.post(
+                    base_url.replace("localhost", "127.0.0.1", 1) + "/api/chat",
+                    json={
+                        "model": model,
+                        "messages": ollama_messages,
+                        "tools": tools,
+                        "stream": False,
+                    },
+                    timeout=300,
+                )
+            resp.raise_for_status()
+            msg = resp.json().get("message", {})
+        except Exception as exc:
+            return {"response": "", "messages": messages, "error": str(exc)}
+
+        tool_calls = msg.get("tool_calls") or []
+        if tool_calls:
+            ollama_messages.append(msg)
+            for tool_call in tool_calls:
+                fn = tool_call.get("function", {})
+                name = fn.get("name", "")
+                args = _parse_tool_arguments(fn.get("arguments"))
+                logger.debug("Ollama tool call: %s %s", name, args)
+                tool_message = {
+                    "role": "tool",
+                    "content": execute_tool(name, args),
+                    "tool_name": name,
+                }
+                if tool_call.get("id"):
+                    tool_message["tool_call_id"] = tool_call["id"]
+                ollama_messages.append(tool_message)
+            continue
+
+        text = (msg.get("content") or "").strip()
+        updated = messages + [{"role": "assistant", "content": text}]
+        return {"response": text, "messages": updated, "error": None}
+
+    return {
+        "response": "I reached my step limit. Please try a simpler question.",
+        "messages": messages,
+        "error": None,
+    }
+
+
 def run_chat(messages: list, max_iterations: int = 8) -> dict:
     """
     Run the agentic loop.
@@ -273,24 +473,10 @@ def run_chat(messages: list, max_iterations: int = 8) -> dict:
     """
     backend = get_ai_backend()
 
-    # Ollama fallback: no tool use, just a plain completion
     if backend == "ollama":
-        from .ai_connector import call_llm
-        history = "\n".join(
-            f"{m['role'].upper()}: {m['content']}" for m in messages[-6:]
-        )
-        prompt = (
-            "You are a CRM assistant for Kikodo CRM. Answer concisely.\n\n"
-            f"{history}"
-        )
-        try:
-            response = call_llm(prompt)
-            updated = messages + [{"role": "assistant", "content": response}]
-            return {"response": response, "messages": updated, "error": None}
-        except Exception as e:
-            return {"response": "", "messages": messages, "error": str(e)}
+        return _run_ollama_chat(messages, max_iterations=max_iterations)
 
-    # Claude: full agentic loop with tool use
+    # Claude / MCP: full agentic loop with tool use
     import anthropic
 
     api_key = _get_anthropic_api_key()
@@ -330,11 +516,11 @@ def run_chat(messages: list, max_iterations: int = 8) -> dict:
                 if block.type != "tool_use":
                     continue
                 logger.debug("AI tool call: %s %s", block.name, block.input)
-                result = _dispatch(block.name, block.input)
+                result_text = execute_tool(block.name, block.input)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
-                    "content": result[0].text if result else "{}",
+                    "content": result_text,
                 })
 
             current.append({"role": "assistant", "content": resp.content})

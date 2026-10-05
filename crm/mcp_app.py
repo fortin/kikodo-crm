@@ -2,12 +2,13 @@
 Kikodo CRM — MCP application (shared between stdio and HTTP transports).
 
 Tools exposed:
-  search_contacts, get_contact, update_contact
-  search_companies, get_company, update_company
+  list_models, describe_model, query_records, get_record, count_records
+  search_contacts, get_contact, create_contact, update_contact
+  search_companies, get_company, create_company, update_company
   fetch_url
   create_signal, update_signal, get_signals
   get_pain_signals, create_pain_signal
-  get_deals
+  get_deals, create_deal
   get_activities, create_activity
 
 Transport wiring:
@@ -19,7 +20,7 @@ Transport wiring:
 
 import json
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import mcp.types as types
@@ -34,6 +35,7 @@ mcp_server = Server("kikodo-crm")
 # ---------------------------------------------------------------------------
 # Serialisation helpers
 # ---------------------------------------------------------------------------
+
 
 def _s(obj: Any) -> Any:
     if isinstance(obj, (date, datetime)):
@@ -120,7 +122,11 @@ def _deal_dict(d) -> dict:
         "probability": d.probability,
         "priority": d.priority or "",
         "expected_close_date": d.expected_close_date,
-        "contact_name": f"{d.contact.first_name} {d.contact.last_name}".strip() if d.contact_id else "",
+        "contact_name": (
+            f"{d.contact.first_name} {d.contact.last_name}".strip()
+            if d.contact_id
+            else ""
+        ),
         "company_name": d.company.name if d.company_id else "",
         "notes": d.notes or "",
     }
@@ -130,32 +136,61 @@ def _deal_dict(d) -> dict:
 # Tool dispatch (synchronous — called via sync_to_async)
 # ---------------------------------------------------------------------------
 
+
 def _dispatch(name: str, arguments: dict) -> list[types.TextContent]:
+    from crm.ai_db import _HANDLERS as _db_handlers
     from crm.models import Activity, Company, Contact, Deal, PainSignal, Signal
+
+    if name in _db_handlers:
+        from crm.ai_db import dispatch as db_dispatch
+
+        result = db_dispatch(name, arguments)
+        if "error" in result:
+            return _err(result["error"])
+        return _ok(result)
 
     # ------------------------------------------------------------------ contacts
     if name == "search_contacts":
         from django.db.models import Q
+
         q = arguments.get("query", "")
-        qs = Contact.objects.filter(is_active=True).filter(
-            Q(first_name__icontains=q) | Q(last_name__icontains=q)
-            | Q(email__icontains=q) | Q(company__name__icontains=q)
-        ).select_related("company")[: int(arguments.get("limit", 20))]
+        qs = (
+            Contact.objects.filter(is_active=True)
+            .filter(
+                Q(first_name__icontains=q)
+                | Q(last_name__icontains=q)
+                | Q(email__icontains=q)
+                | Q(company__name__icontains=q)
+            )
+            .select_related("company")[: int(arguments.get("limit", 20))]
+        )
         return _ok([_contact_dict(c) for c in qs])
 
     if name == "get_contact":
         try:
-            c = Contact.objects.select_related("company").get(pk=arguments["contact_id"])
+            c = Contact.objects.select_related("company").get(
+                pk=arguments["contact_id"]
+            )
         except Contact.DoesNotExist:
             return _err("Contact not found")
         data = _contact_dict(c)
         data["recent_activities"] = [
-            {"id": a.pk, "type": a.activity_type, "subject": a.subject or "",
-             "status": a.status or "", "created_at": a.created_at}
+            {
+                "id": a.pk,
+                "type": a.activity_type,
+                "subject": a.subject or "",
+                "status": a.status or "",
+                "created_at": a.created_at,
+            }
             for a in Activity.objects.filter(contact=c).order_by("-created_at")[:10]
         ]
         data["deals"] = [
-            {"id": d.pk, "name": d.name, "stage": d.stage or "", "amount": str(d.amount or "")}
+            {
+                "id": d.pk,
+                "name": d.name,
+                "stage": d.stage or "",
+                "amount": str(d.amount or ""),
+            }
             for d in Deal.objects.filter(contact=c, is_active=True)
         ]
         data["pain_signals"] = [
@@ -164,20 +199,73 @@ def _dispatch(name: str, arguments: dict) -> list[types.TextContent]:
         ]
         return _ok(data)
 
+    if name == "create_contact":
+        first_name = (arguments.get("first_name") or "").strip()
+        last_name = (arguments.get("last_name") or "").strip()
+        if not first_name or not last_name:
+            return _err("first_name and last_name are required")
+        email = (arguments.get("email") or "").strip().lower() or None
+        if email:
+            existing = Contact.objects.filter(email=email).first()
+            if existing:
+                return _err(
+                    f"Contact with this email already exists (id={existing.pk})"
+                )
+        company = None
+        if arguments.get("company_id"):
+            try:
+                company = Company.objects.get(pk=arguments["company_id"])
+            except Company.DoesNotExist:
+                return _err("Company not found")
+        elif arguments.get("company_name"):
+            val = arguments["company_name"].strip()
+            if val:
+                company, _ = Company.objects.get_or_create(name=val, defaults={})
+        c = Contact(
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            phone=arguments.get("phone") or "",
+            job_title=arguments.get("job_title") or "",
+            linkedin_url=arguments.get("linkedin_url") or "",
+            status=arguments.get("status") or "lead",
+            notes=arguments.get("notes") or "",
+            headline=arguments.get("headline") or "",
+            source=arguments.get("source") or "mcp",
+            company=company,
+        )
+        c.save()
+        return _ok({"created": True, "contact": _contact_dict(c)})
+
     if name == "update_contact":
         try:
-            c = Contact.objects.select_related("company").get(pk=arguments["contact_id"])
+            c = Contact.objects.select_related("company").get(
+                pk=arguments["contact_id"]
+            )
         except Contact.DoesNotExist:
             return _err("Contact not found")
         updated = ["updated_at"]
-        for field in ("job_title", "headline", "bio", "notes", "linkedin_url", "status"):
+        for field in (
+            "job_title",
+            "headline",
+            "bio",
+            "notes",
+            "linkedin_url",
+            "status",
+        ):
             if arguments.get(field):
                 setattr(c, field, arguments[field])
                 updated.append(field)
         if arguments.get("company_name"):
             val = arguments["company_name"].strip()
-            if len(val) >= 2 and not val.startswith("http") and "linkedin.com" not in val.lower():
-                co, _ = Company.objects.get_or_create(name=val, defaults={"owner": c.owner})
+            if (
+                len(val) >= 2
+                and not val.startswith("http")
+                and "linkedin.com" not in val.lower()
+            ):
+                co, _ = Company.objects.get_or_create(
+                    name=val, defaults={"owner": c.owner}
+                )
                 c.company = co
                 updated.append("company")
         c.save(update_fields=updated)
@@ -186,6 +274,7 @@ def _dispatch(name: str, arguments: dict) -> list[types.TextContent]:
     # ---------------------------------------------------------------- companies
     if name == "search_companies":
         from django.db.models import Q
+
         q = arguments.get("query", "")
         qs = Company.objects.filter(is_active=True).filter(
             Q(name__icontains=q) | Q(industry__icontains=q)
@@ -199,19 +288,57 @@ def _dispatch(name: str, arguments: dict) -> list[types.TextContent]:
             return _err("Company not found")
         data = _company_dict(co)
         data["contacts"] = [
-            {"id": c.pk, "name": f"{c.first_name} {c.last_name}".strip(), "job_title": c.job_title or ""}
+            {
+                "id": c.pk,
+                "name": f"{c.first_name} {c.last_name}".strip(),
+                "job_title": c.job_title or "",
+            }
             for c in Contact.objects.filter(company=co, is_active=True)[:20]
         ]
-        data["deals"] = [_deal_dict(d) for d in Deal.objects.filter(company=co, is_active=True)[:10]]
+        data["deals"] = [
+            _deal_dict(d) for d in Deal.objects.filter(company=co, is_active=True)[:10]
+        ]
         data["pain_signals"] = [
             {"id": p.pk, "description": p.description or "", "source": p.source or ""}
             for p in PainSignal.objects.filter(company=co).order_by("-created_at")[:10]
         ]
         data["signals"] = [
             {"id": s.pk, "headline": s.headline or "", "relevance": s.relevance or ""}
-            for s in Signal.objects.filter(companies=co).order_by("-date_logged")[:5]
+            for s in Signal.objects.filter(linked_company=co).order_by("-date_logged")[
+                :5
+            ]
         ]
         return _ok(data)
+
+    if name == "create_company":
+        name = (arguments.get("name") or "").strip()
+        if not name:
+            return _err("name is required")
+        existing = Company.objects.filter(name__iexact=name).first()
+        if existing:
+            return _err(
+                f"Company already exists (id={existing.pk}, name={existing.name})"
+            )
+        co = Company(
+            name=name,
+            industry=arguments.get("industry") or "",
+            website=arguments.get("website") or "",
+            phone=arguments.get("phone") or "",
+            email=arguments.get("email") or "",
+            city=arguments.get("city") or "",
+            state=arguments.get("state") or "",
+            country=arguments.get("country") or "",
+            description=arguments.get("description") or "",
+            linkedin_url=arguments.get("linkedin_url") or "",
+        )
+        if arguments.get("employee_count") is not None:
+            co.employee_count = arguments["employee_count"]
+        if arguments.get("icp_fit_score") is not None:
+            co.icp_fit_score = arguments["icp_fit_score"]
+        if arguments.get("icp_fit_tier"):
+            co.icp_fit_tier = arguments["icp_fit_tier"]
+        co.save()
+        return _ok({"created": True, "company": _company_dict(co)})
 
     if name == "update_company":
         try:
@@ -219,8 +346,15 @@ def _dispatch(name: str, arguments: dict) -> list[types.TextContent]:
         except Company.DoesNotExist:
             return _err("Company not found")
         updated = ["updated_at"]
-        for field in ("description", "industry", "website", "employee_count",
-                      "icp_fit_score", "icp_fit_tier", "notes"):
+        for field in (
+            "description",
+            "industry",
+            "website",
+            "employee_count",
+            "icp_fit_score",
+            "icp_fit_tier",
+            "notes",
+        ):
             if field in arguments and arguments[field] is not None:
                 setattr(co, field, arguments[field])
                 updated.append(field)
@@ -230,8 +364,11 @@ def _dispatch(name: str, arguments: dict) -> list[types.TextContent]:
     # ------------------------------------------------------------------- signals
     if name == "fetch_url":
         from crm.signals_llm import fetch_url_text
+
         try:
-            text = fetch_url_text(arguments["url"], max_chars=int(arguments.get("max_chars", 25000)))
+            text = fetch_url_text(
+                arguments["url"], max_chars=int(arguments.get("max_chars", 25000))
+            )
             return _ok({"url": arguments["url"], "content": text, "length": len(text)})
         except Exception as e:
             return _err(f"Could not fetch URL: {e}")
@@ -253,12 +390,28 @@ def _dispatch(name: str, arguments: dict) -> list[types.TextContent]:
             status="logged",
         )
         s.save()
-        for cname in arguments.get("mentioned_company_names", []):
+        mentioned_ids = []
+        for cname in arguments.get("mentioned_company_names") or []:
+            if not isinstance(cname, str):
+                continue
             cname = cname.strip()
-            if cname:
-                co, _ = Company.objects.get_or_create(name=cname, defaults={})
-                s.companies.add(co)
-        return _ok({"created": True, "signal_id": s.pk})
+            if not cname:
+                continue
+            co = Company.objects.filter(name__iexact=cname).first()
+            if not co:
+                co = Company.objects.create(name=cname)
+            mentioned_ids.append(co.pk)
+            if not s.linked_company_id:
+                s.linked_company = co
+                s.save(update_fields=["linked_company", "updated_at"])
+        return _ok(
+            {
+                "created": True,
+                "signal_id": s.pk,
+                "linked_company_id": s.linked_company_id,
+                "mentioned_company_ids": mentioned_ids,
+            }
+        )
 
     if name == "update_signal":
         try:
@@ -266,8 +419,15 @@ def _dispatch(name: str, arguments: dict) -> list[types.TextContent]:
         except Signal.DoesNotExist:
             return _err("Signal not found")
         updated = ["updated_at"]
-        for field in ("headline", "summary", "relevance", "potential_action",
-                      "status", "competitors", "competitors_notes"):
+        for field in (
+            "headline",
+            "summary",
+            "relevance",
+            "potential_action",
+            "status",
+            "competitors",
+            "competitors_notes",
+        ):
             if field in arguments and arguments[field] is not None:
                 setattr(s, field, arguments[field])
                 updated.append(field)
@@ -285,19 +445,29 @@ def _dispatch(name: str, arguments: dict) -> list[types.TextContent]:
 
     # --------------------------------------------------------------- pain signals
     if name == "get_pain_signals":
-        qs = PainSignal.objects.select_related("company", "contact").order_by("-created_at")
+        qs = PainSignal.objects.select_related("company", "contact").order_by(
+            "-created_at"
+        )
         if "company_id" in arguments:
             qs = qs.filter(company_id=arguments["company_id"])
         qs = qs[: int(arguments.get("limit", 30))]
-        return _ok([
-            {
-                "id": p.pk, "description": p.description or "", "source": p.source or "",
-                "company": p.company.name if p.company_id else "",
-                "contact": f"{p.contact.first_name} {p.contact.last_name}".strip() if p.contact_id else "",
-                "created_at": p.created_at,
-            }
-            for p in qs
-        ])
+        return _ok(
+            [
+                {
+                    "id": p.pk,
+                    "description": p.description or "",
+                    "source": p.source or "",
+                    "company": p.company.name if p.company_id else "",
+                    "contact": (
+                        f"{p.contact.first_name} {p.contact.last_name}".strip()
+                        if p.contact_id
+                        else ""
+                    ),
+                    "created_at": p.created_at,
+                }
+                for p in qs
+            ]
+        )
 
     if name == "create_pain_signal":
         ps = PainSignal(
@@ -312,6 +482,58 @@ def _dispatch(name: str, arguments: dict) -> list[types.TextContent]:
         return _ok({"created": True, "pain_signal_id": ps.pk})
 
     # --------------------------------------------------------------------- deals
+    if name == "create_deal":
+        from decimal import Decimal, InvalidOperation
+
+        name = (arguments.get("name") or "").strip()
+        if not name:
+            return _err("name is required")
+        if "contact_id" not in arguments:
+            return _err("contact_id is required")
+        try:
+            contact = Contact.objects.select_related("company").get(
+                pk=arguments["contact_id"]
+            )
+        except Contact.DoesNotExist:
+            return _err("Contact not found")
+        company = contact.company
+        if arguments.get("company_id"):
+            try:
+                company = Company.objects.get(pk=arguments["company_id"])
+            except Company.DoesNotExist:
+                return _err("Company not found")
+        amount = arguments.get("amount", 0)
+        try:
+            amount = Decimal(str(amount))
+        except (InvalidOperation, TypeError):
+            return _err("amount must be a number")
+        close_raw = arguments.get("expected_close_date")
+        if close_raw:
+            try:
+                expected_close = date.fromisoformat(str(close_raw)[:10])
+            except ValueError:
+                return _err("expected_close_date must be YYYY-MM-DD")
+        else:
+            expected_close = date.today() + timedelta(days=30)
+        probability = arguments.get("probability")
+        if probability is None:
+            probability = 0
+        d = Deal(
+            name=name,
+            description=arguments.get("description") or "",
+            amount=amount,
+            currency=arguments.get("currency") or "USD",
+            stage=arguments.get("stage") or "prospecting",
+            probability=int(probability),
+            priority=arguments.get("priority") or "medium",
+            contact=contact,
+            company=company,
+            expected_close_date=expected_close,
+            notes=arguments.get("notes") or "",
+        )
+        d.save()
+        return _ok({"created": True, "deal": _deal_dict(d)})
+
     if name == "get_deals":
         qs = Deal.objects.filter(is_active=True).select_related("contact", "company")
         if "stage" in arguments:
@@ -325,7 +547,9 @@ def _dispatch(name: str, arguments: dict) -> list[types.TextContent]:
 
     # ----------------------------------------------------------------- activities
     if name == "get_activities":
-        qs = Activity.objects.select_related("contact", "company").order_by("-created_at")
+        qs = Activity.objects.select_related("contact", "company").order_by(
+            "-created_at"
+        )
         if "contact_id" in arguments:
             qs = qs.filter(contact_id=arguments["contact_id"])
         if "company_id" in arguments:
@@ -333,15 +557,25 @@ def _dispatch(name: str, arguments: dict) -> list[types.TextContent]:
         if "deal_id" in arguments:
             qs = qs.filter(deal_id=arguments["deal_id"])
         qs = qs[: int(arguments.get("limit", 20))]
-        return _ok([
-            {
-                "id": a.pk, "type": a.activity_type, "subject": a.subject or "",
-                "body": (a.body or "")[:500], "status": a.status or "",
-                "direction": a.direction or "", "created_at": a.created_at,
-                "contact": f"{a.contact.first_name} {a.contact.last_name}".strip() if a.contact_id else "",
-            }
-            for a in qs
-        ])
+        return _ok(
+            [
+                {
+                    "id": a.pk,
+                    "type": a.activity_type,
+                    "subject": a.subject or "",
+                    "body": (a.body or "")[:500],
+                    "status": a.status or "",
+                    "direction": a.direction or "",
+                    "created_at": a.created_at,
+                    "contact": (
+                        f"{a.contact.first_name} {a.contact.last_name}".strip()
+                        if a.contact_id
+                        else ""
+                    ),
+                }
+                for a in qs
+            ]
+        )
 
     if name == "create_activity":
         a = Activity(
@@ -367,9 +601,23 @@ def _dispatch(name: str, arguments: dict) -> list[types.TextContent]:
 # MCP server — tool registration
 # ---------------------------------------------------------------------------
 
+
+def _db_mcp_tools() -> list[types.Tool]:
+    from crm.ai_db import DB_TOOL_SCHEMAS
+
+    return [
+        types.Tool(
+            name=spec["name"],
+            description=spec["description"],
+            inputSchema=spec["input_schema"],
+        )
+        for spec in DB_TOOL_SCHEMAS
+    ]
+
+
 @mcp_server.list_tools()
 async def list_tools() -> list[types.Tool]:
-    return [
+    return _db_mcp_tools() + [
         types.Tool(
             name="search_contacts",
             description="Search CRM contacts by name, email, or company.",
@@ -389,6 +637,35 @@ async def list_tools() -> list[types.Tool]:
                 "type": "object",
                 "properties": {"contact_id": {"type": "integer"}},
                 "required": ["contact_id"],
+            },
+        ),
+        types.Tool(
+            name="create_contact",
+            description="Create a new CRM contact. Prefer company_id if the company already exists.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "first_name": {"type": "string"},
+                    "last_name": {"type": "string"},
+                    "email": {"type": "string"},
+                    "phone": {"type": "string"},
+                    "job_title": {"type": "string"},
+                    "company_id": {"type": "integer"},
+                    "company_name": {
+                        "type": "string",
+                        "description": "Create or attach by company name if company_id is unknown",
+                    },
+                    "linkedin_url": {"type": "string"},
+                    "status": {
+                        "type": "string",
+                        "enum": ["lead", "prospect", "customer", "inactive"],
+                        "default": "lead",
+                    },
+                    "headline": {"type": "string"},
+                    "notes": {"type": "string"},
+                    "source": {"type": "string"},
+                },
+                "required": ["first_name", "last_name"],
             },
         ),
         types.Tool(
@@ -428,6 +705,29 @@ async def list_tools() -> list[types.Tool]:
                 "type": "object",
                 "properties": {"company_id": {"type": "integer"}},
                 "required": ["company_id"],
+            },
+        ),
+        types.Tool(
+            name="create_company",
+            description="Create a new CRM company. Fails if a company with the same name already exists.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "industry": {"type": "string"},
+                    "website": {"type": "string"},
+                    "phone": {"type": "string"},
+                    "email": {"type": "string"},
+                    "city": {"type": "string"},
+                    "state": {"type": "string"},
+                    "country": {"type": "string"},
+                    "description": {"type": "string"},
+                    "linkedin_url": {"type": "string"},
+                    "employee_count": {"type": "integer"},
+                    "icp_fit_score": {"type": "number"},
+                    "icp_fit_tier": {"type": "string", "enum": ["A", "B", "C", "D"]},
+                },
+                "required": ["name"],
             },
         ),
         types.Tool(
@@ -474,7 +774,10 @@ async def list_tools() -> list[types.Tool]:
                     "potential_action": {"type": "string"},
                     "competitors": {"type": "string"},
                     "competitors_notes": {"type": "string"},
-                    "mentioned_company_names": {"type": "array", "items": {"type": "string"}},
+                    "mentioned_company_names": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
                 },
                 "required": ["source_url", "headline", "summary"],
             },
@@ -490,7 +793,10 @@ async def list_tools() -> list[types.Tool]:
                     "summary": {"type": "string"},
                     "relevance": {"type": "string", "enum": ["high", "medium", "low"]},
                     "potential_action": {"type": "string"},
-                    "status": {"type": "string", "enum": ["logged", "actioned", "archived"]},
+                    "status": {
+                        "type": "string",
+                        "enum": ["logged", "actioned", "archived"],
+                    },
                     "competitors": {"type": "string"},
                     "competitors_notes": {"type": "string"},
                 },
@@ -535,6 +841,45 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="create_deal",
+            description="Create a new deal/opportunity. Requires an existing contact. Company is taken from the contact unless company_id is set. expected_close_date defaults to 30 days from today.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "contact_id": {"type": "integer"},
+                    "company_id": {"type": "integer"},
+                    "amount": {"type": "number", "default": 0},
+                    "currency": {"type": "string", "default": "USD"},
+                    "stage": {
+                        "type": "string",
+                        "enum": [
+                            "prospecting",
+                            "qualification",
+                            "proposal",
+                            "negotiation",
+                            "closed_won",
+                            "closed_lost",
+                        ],
+                        "default": "prospecting",
+                    },
+                    "probability": {"type": "integer", "default": 0},
+                    "priority": {
+                        "type": "string",
+                        "enum": ["low", "medium", "high"],
+                        "default": "medium",
+                    },
+                    "expected_close_date": {
+                        "type": "string",
+                        "description": "YYYY-MM-DD; defaults to 30 days from today",
+                    },
+                    "description": {"type": "string"},
+                    "notes": {"type": "string"},
+                },
+                "required": ["name", "contact_id"],
+            },
+        ),
+        types.Tool(
             name="get_deals",
             description="List deals filtered by stage, company, or contact.",
             inputSchema={
@@ -569,13 +914,31 @@ async def list_tools() -> list[types.Tool]:
                     "contact_id": {"type": "integer"},
                     "company_id": {"type": "integer"},
                     "deal_id": {"type": "integer"},
-                    "activity_type": {"type": "string",
-                                      "enum": ["call", "email", "meeting", "task",
-                                               "linkedin", "note", "demo", "proposal"]},
+                    "activity_type": {
+                        "type": "string",
+                        "enum": [
+                            "call",
+                            "email",
+                            "meeting",
+                            "task",
+                            "linkedin",
+                            "note",
+                            "demo",
+                            "proposal",
+                        ],
+                    },
                     "subject": {"type": "string"},
                     "body": {"type": "string"},
-                    "status": {"type": "string", "enum": ["pending", "completed"], "default": "completed"},
-                    "direction": {"type": "string", "enum": ["inbound", "outbound"], "default": "outbound"},
+                    "status": {
+                        "type": "string",
+                        "enum": ["pending", "completed"],
+                        "default": "completed",
+                    },
+                    "direction": {
+                        "type": "string",
+                        "enum": ["inbound", "outbound"],
+                        "default": "outbound",
+                    },
                 },
                 "required": ["activity_type", "subject"],
             },
@@ -591,6 +954,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
 # ---------------------------------------------------------------------------
 # Starlette HTTP app (SSE + streamable POST endpoint)
 # ---------------------------------------------------------------------------
+
 
 def build_starlette_app():
     """
@@ -619,8 +983,9 @@ def build_starlette_app():
 
     def _validate_bearer(request):
         from .mcp_oauth import is_valid_token
+
         token = _bearer_token(list(request.headers.raw))
-        if token and not is_valid_token(token):
+        if not token or not is_valid_token(token):
             return StarletteJSON({"error": "unauthorized"}, status_code=401)
         return None
 
@@ -646,9 +1011,12 @@ def build_starlette_app():
         from mcp.server.streamable_http import StreamableHTTPServerTransport
 
         from .mcp_oauth import is_valid_token
+
         token = _bearer_token(scope.get("headers", []))
         if token and not is_valid_token(token):
-            await StarletteJSON({"error": "unauthorized"}, status_code=401)(scope, receive, send)
+            await StarletteJSON({"error": "unauthorized"}, status_code=401)(
+                scope, receive, send
+            )
             return
 
         transport = StreamableHTTPServerTransport(
@@ -671,8 +1039,10 @@ def build_starlette_app():
             await transport.terminate()
             tg.cancel_scope.cancel()
 
-    return Starlette(routes=[
-        Route("/mcp/sse", endpoint=handle_sse),
-        Mount("/mcp/messages/", app=sse.handle_post_message),
-        Mount("/mcp", app=handle_streamable),
-    ])
+    return Starlette(
+        routes=[
+            Route("/mcp/sse", endpoint=handle_sse),
+            Mount("/mcp/messages/", app=sse.handle_post_message),
+            Mount("/mcp", app=handle_streamable),
+        ]
+    )

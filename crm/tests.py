@@ -1,12 +1,16 @@
+import json
+
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
 from crm.models import (
+    Company,
     NewsletterEdition,
     NewsletterPlan,
     NewsletterTemplate,
     NewsletterTemplateSection,
+    Signal,
 )
 
 
@@ -151,3 +155,29 @@ class NewsletterIssueCreateTemplateTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "crm/newsletter_issue_choose_template.html")
         self.assertContains(response, "Weekly")
+
+
+class CreateSignalToolTests(TestCase):
+    def _dispatch(self, name, arguments):
+        from crm.mcp_app import _dispatch
+
+        result = _dispatch(name, arguments)
+        return json.loads(result[0].text)
+
+    def test_create_signal_links_mentioned_companies(self):
+        existing = Company.objects.create(name="Acme")
+        payload = self._dispatch(
+            "create_signal",
+            {
+                "source_url": "https://example.com/news",
+                "headline": "Acme and Globex expand",
+                "summary": "Partnership announced.",
+                "mentioned_company_names": ["Acme", "Globex", ""],
+            },
+        )
+        self.assertTrue(payload["created"])
+        signal = Signal.objects.get(pk=payload["signal_id"])
+        self.assertEqual(signal.linked_company_id, existing.pk)
+        self.assertEqual(payload["linked_company_id"], existing.pk)
+        globex = Company.objects.get(name="Globex")
+        self.assertEqual(payload["mentioned_company_ids"], [existing.pk, globex.pk])
