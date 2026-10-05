@@ -136,22 +136,49 @@
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Processing…';
 
+        const csrfInput = form.querySelector('[name=csrfmiddlewaretoken]');
+        if (!csrfInput || !csrfInput.value) {
+          showError('Session expired or CSRF token missing. Refresh the page and try again.');
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<i class="fas fa-magic"></i>';
+          return;
+        }
+
         const formData = new FormData();
         formData.append('pasted_content', content);
-        formData.append('csrfmiddlewaretoken', form.querySelector('[name=csrfmiddlewaretoken]').value);
+        formData.append('csrfmiddlewaretoken', csrfInput.value);
 
         fetch('{% url "crm:signal_populate_from_text" signal.pk %}', {
           method: 'POST',
           body: formData,
           headers: {
             'X-Requested-With': 'XMLHttpRequest',
-            'X-CSRFToken': form.querySelector('[name=csrfmiddlewaretoken]').value
+            'Accept': 'application/json',
+            'X-CSRFToken': csrfInput.value
           },
           credentials: 'same-origin'
         })
-        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+        .then(function(r) {
+          return r.text().then(function(body) {
+            let data = null;
+            try {
+              data = body ? JSON.parse(body) : null;
+            } catch (parseErr) {
+              var hint = 'Server returned a non-JSON response (HTTP ' + r.status + ').';
+              if (r.status === 403) {
+                hint += ' CSRF or permission error — refresh the page and try again.';
+              } else if (r.status === 302 || r.status === 401) {
+                hint += ' Your session may have expired — log in again.';
+              } else if (r.status === 502 || r.status === 504) {
+                hint += ' The LLM request may have timed out — try again or paste a shorter excerpt.';
+              }
+              throw new Error(hint);
+            }
+            return { ok: r.ok, data: data };
+          });
+        })
         .then(function(result) {
-          if (result.ok && result.data.success) {
+          if (result.ok && result.data && result.data.success) {
             const fields = result.data.fields || {};
             for (const [name, value] of Object.entries(fields)) {
               const el = form.querySelector('[name="' + name + '"]');
@@ -159,7 +186,7 @@
             }
             bootstrap.Modal.getInstance(modal).hide();
           } else {
-            showError(result.data.error || 'An error occurred.');
+            showError((result.data && result.data.error) || 'An error occurred.');
           }
         })
         .catch(function(err) {

@@ -38,10 +38,12 @@ def fetch_url_text(url: str, max_chars: int = 30000) -> str:
     resp = requests.get(url, headers=headers, timeout=15)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
-    # Remove script/style
-    for tag in soup(["script", "style"]):
+    # Remove script/style and chrome that drowns out article text in LLM prompts
+    for tag in soup(["script", "style", "nav", "header", "footer"]):
         tag.decompose()
-    text = soup.get_text(separator="\n")
+    # Prefer main content region when present (e.g. publisher sites with huge menus)
+    root = soup.find("main") or soup.find("article")
+    text = (root or soup).get_text(separator="\n")
     text = re.sub(r"\n\s*\n", "\n\n", text).strip()
     if len(text) > max_chars:
         text = text[:max_chars] + "\n[... truncated]"
