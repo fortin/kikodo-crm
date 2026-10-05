@@ -443,7 +443,9 @@ class NewsletterTemplateSectionInline(admin.TabularInline):
 
 @admin.register(NewsletterTemplate)
 class NewsletterTemplateAdmin(admin.ModelAdmin):
-    list_display = ["name", "created_at"]
+    list_display = ["name", "is_default", "created_at"]
+    list_filter = ["is_default"]
+    list_editable = ["is_default"]
     search_fields = ["name"]
     inlines = [NewsletterTemplateSectionInline]
     readonly_fields = ["created_at", "updated_at"]

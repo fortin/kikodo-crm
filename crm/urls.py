@@ -154,6 +154,11 @@ urlpatterns = [
         name="newsletter_template_delete",
     ),
     path(
+        "newsletters/templates/<int:pk>/default/",
+        views.newsletter_template_set_default,
+        name="newsletter_template_set_default",
+    ),
+    path(
         "newsletters/issues/", views.newsletter_issue_list, name="newsletter_issue_list"
     ),
     path(

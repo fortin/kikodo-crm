@@ -3470,6 +3470,22 @@ def newsletter_template_delete(request, pk):
 
 
 @login_required
+def newsletter_template_set_default(request, pk):
+    """Set or clear the default template used when creating new issues."""
+    template = get_object_or_404(NewsletterTemplate, pk=pk)
+    if request.method != "POST":
+        return redirect("crm:newsletter_template_list")
+    make_default = request.POST.get("make_default", "1") != "0"
+    template.is_default = make_default
+    template.save()
+    if make_default:
+        messages.success(request, f"“{template.name}” is now the default for new issues.")
+    else:
+        messages.success(request, f"“{template.name}” is no longer the default.")
+    return redirect("crm:newsletter_template_list")
+
+
+@login_required
 def newsletter_issue_list(request):
     """List newsletter issues (drafts and published)."""
     if request.method == "POST":
@@ -3491,6 +3507,98 @@ def newsletter_issue_list(request):
     )
 
 
+def _newsletter_issue_create_url(**params):
+    url = reverse("crm:newsletter_issue_create")
+    cleaned = {key: value for key, value in params.items() if value not in (None, "", False)}
+    if not cleaned:
+        return url
+    return f"{url}?{urlencode(cleaned)}"
+
+
+def _edition_issue_form_initial(edition):
+    sd = edition.scheduled_date
+    title = (edition.weekly_theme or "").strip() or (f"Issue {sd}" if sd else "New issue")
+    return {
+        "title": title,
+        "slug": "",
+        "subject": edition.subject or "",
+        "scheduled_date": sd,
+        "status": "draft",
+    }
+
+
+def _edition_fallback_sections(edition):
+    import re
+
+    section_heading = (edition.weekly_theme or "").strip() or "Content"
+    section_body = (edition.notes or "").strip() or (edition.body_html or "").strip()
+    if section_body and section_body.startswith("<"):
+        section_body = re.sub(r"<[^>]+>", " ", section_body)
+        section_body = re.sub(r"\s+", " ", section_body).strip()
+    return [{"order": 0, "heading": section_heading, "body_markdown": section_body[:2000]}]
+
+
+def _template_sections_initial(template):
+    return [
+        {"order": s.order, "heading": s.heading, "body_markdown": s.body_markdown}
+        for s in template.sections.order_by("order")
+    ]
+
+
+def _issue_section_formset_with_initial(initial_sections):
+    from django.forms import inlineformset_factory
+
+    section_formset_class = inlineformset_factory(
+        NewsletterIssue,
+        NewsletterIssueSection,
+        fields=["order", "heading", "body_markdown"],
+        extra=max(2, len(initial_sections) + 2),
+        can_delete=True,
+        formset=BaseNewsletterIssueSectionFormSet,
+        widgets={
+            "heading": forms.TextInput(attrs={"placeholder": "Section heading", "class": "form-control"}),
+            "body_markdown": forms.Textarea(attrs={"rows": 4, "placeholder": "Markdown content", "class": "form-control"}),
+        },
+    )
+    return section_formset_class(instance=NewsletterIssue(), initial=initial_sections)
+
+
+def _issue_create_form_and_formset(from_template=None, from_edition=None):
+    form_initial = {}
+    initial_sections = None
+    if from_edition:
+        form_initial.update(_edition_issue_form_initial(from_edition))
+    if from_template:
+        form_initial["created_from_template"] = from_template.pk
+        if not from_edition:
+            form_initial["title"] = from_template.name
+            form_initial["slug"] = ""
+        initial_sections = _template_sections_initial(from_template)
+    elif from_edition:
+        initial_sections = _edition_fallback_sections(from_edition)
+
+    form = NewsletterIssueForm(initial=form_initial) if form_initial else NewsletterIssueForm()
+    if initial_sections:
+        formset = _issue_section_formset_with_initial(initial_sections)
+    else:
+        formset = NewsletterIssueSectionFormSetForCreate(instance=NewsletterIssue())
+    return form, formset
+
+
+def _render_choose_template(request, from_edition=None):
+    templates = NewsletterTemplate.objects.prefetch_related("sections").order_by("name")
+    default_template = NewsletterTemplate.objects.filter(is_default=True).first()
+    return render(
+        request,
+        "crm/newsletter_issue_choose_template.html",
+        {
+            "templates": templates,
+            "from_edition": from_edition,
+            "default_template": default_template,
+        },
+    )
+
+
 @login_required
 def newsletter_issue_create(request):
     """Create a new newsletter issue. Optional ?from_template=<pk> or ?from_edition=<pk> to prepopulate from template or plan edition."""
@@ -3501,11 +3609,52 @@ def newsletter_issue_create(request):
             NewsletterTemplate.objects.prefetch_related("sections"),
             pk=request.GET.get("from_template"),
         )
-    if request.GET.get("from_edition"):
+    if request.GET.get("from_edition") or request.POST.get("from_edition"):
         from_edition = get_object_or_404(
             NewsletterEdition.objects.select_related("plan"),
-            pk=request.GET.get("from_edition"),
+            pk=request.GET.get("from_edition") or request.POST.get("from_edition"),
         )
+
+    if request.method == "POST" and request.POST.get("action") == "select_template":
+        if request.POST.get("skip_template"):
+            return redirect(
+                _newsletter_issue_create_url(
+                    blank=1,
+                    from_edition=from_edition.pk if from_edition else None,
+                )
+            )
+        template_id = (request.POST.get("template_id") or "").strip()
+        make_default = bool(request.POST.get("make_default"))
+        if template_id:
+            selected = get_object_or_404(NewsletterTemplate, pk=template_id)
+            if make_default:
+                selected.is_default = True
+                selected.save()
+            return redirect(
+                _newsletter_issue_create_url(
+                    from_template=selected.pk,
+                    from_edition=from_edition.pk if from_edition else None,
+                )
+            )
+        return _render_choose_template(request, from_edition=from_edition)
+
+    if request.method == "GET":
+        force_choose = bool(request.GET.get("choose"))
+        blank = bool(request.GET.get("blank"))
+        if force_choose and NewsletterTemplate.objects.exists():
+            return _render_choose_template(request, from_edition=from_edition)
+        if not from_template and not blank:
+            default_template = NewsletterTemplate.get_default()
+            if default_template:
+                return redirect(
+                    _newsletter_issue_create_url(
+                        from_template=default_template.pk,
+                        from_edition=from_edition.pk if from_edition else None,
+                    )
+                )
+            if NewsletterTemplate.objects.exists():
+                return _render_choose_template(request, from_edition=from_edition)
+
     if request.method == "POST":
         form = NewsletterIssueForm(request.POST)
         formset = NewsletterIssueSectionFormSetForCreate(request.POST)
@@ -3536,68 +3685,24 @@ def newsletter_issue_create(request):
             return redirect("crm:newsletter_issue_detail", pk=issue.pk)
         messages.error(request, "Please fix the errors below and try again.")
     else:
-        if from_edition:
-            ed = from_edition
-            sd = ed.scheduled_date
-            title = (ed.weekly_theme or "").strip() or (f"Issue {sd}" if sd else "New issue")
-            form_initial = {
-                "title": title,
-                "slug": "",
-                "subject": ed.subject or "",
-                "scheduled_date": sd,
-                "status": "draft",
-            }
-            section_heading = (ed.weekly_theme or "").strip() or "Content"
-            section_body = (ed.notes or "").strip() or (ed.body_html or "").strip()
-            if section_body and section_body.startswith("<"):
-                import re
-                section_body = re.sub(r"<[^>]+>", " ", section_body)
-                section_body = re.sub(r"\s+", " ", section_body).strip()
-            initial_sections = [{"order": 0, "heading": section_heading, "body_markdown": section_body[: 2000]}]
-            form = NewsletterIssueForm(initial=form_initial)
-            from django.forms import inlineformset_factory
-            from .models import NewsletterIssueSection
-            section_formset_class = inlineformset_factory(
-                NewsletterIssue,
-                NewsletterIssueSection,
-                fields=["order", "heading", "body_markdown"],
-                extra=max(2, len(initial_sections) + 2),
-                can_delete=True,
-                formset=BaseNewsletterIssueSectionFormSet,
-                widgets={
-                    "heading": forms.TextInput(attrs={"placeholder": "Section heading", "class": "form-control"}),
-                    "body_markdown": forms.Textarea(attrs={"rows": 4, "placeholder": "Markdown content", "class": "form-control"}),
-                },
-            )
-            formset = section_formset_class(instance=NewsletterIssue(), initial=initial_sections)
-        elif from_template:
-            form = NewsletterIssueForm(initial={"created_from_template": from_template.pk, "title": from_template.name, "slug": ""})
-            initial_sections = [
-                {"order": s.order, "heading": s.heading, "body_markdown": s.body_markdown}
-                for s in from_template.sections.order_by("order")
-            ]
-            from django.forms import inlineformset_factory
-            from .models import NewsletterIssueSection
-            section_formset_class = inlineformset_factory(
-                NewsletterIssue,
-                NewsletterIssueSection,
-                fields=["order", "heading", "body_markdown"],
-                extra=max(2, len(initial_sections) + 2),
-                can_delete=True,
-                formset=BaseNewsletterIssueSectionFormSet,
-                widgets={
-                    "heading": forms.TextInput(attrs={"placeholder": "Section heading", "class": "form-control"}),
-                    "body_markdown": forms.Textarea(attrs={"rows": 4, "placeholder": "Markdown content", "class": "form-control"}),
-                },
-            )
-            formset = section_formset_class(instance=NewsletterIssue(), initial=initial_sections)
-        else:
-            form = NewsletterIssueForm()
-            formset = NewsletterIssueSectionFormSetForCreate(instance=NewsletterIssue())
+        form, formset = _issue_create_form_and_formset(
+            from_template=from_template,
+            from_edition=from_edition,
+        )
     return render(
         request,
         "crm/newsletter_issue_form.html",
-        {"form": form, "formset": formset, "issue": None, "from_template": from_template, "from_edition": from_edition},
+        {
+            "form": form,
+            "formset": formset,
+            "issue": None,
+            "from_template": from_template,
+            "from_edition": from_edition,
+            "choose_template_url": _newsletter_issue_create_url(
+                choose=1,
+                from_edition=from_edition.pk if from_edition else None,
+            ),
+        },
     )
 
 

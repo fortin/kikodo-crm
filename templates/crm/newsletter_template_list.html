@@ -18,23 +18,38 @@
 {% block content %}
 <div class="card">
   <div class="card-body">
-    <p class="text-muted">Reusable structures with sections (heading + Markdown body). Use a template when creating a new issue to copy its sections.</p>
+    <p class="text-muted">Reusable structures with sections (heading + Markdown body). Set one as default so new issues skip the template picker.</p>
     <div class="table-responsive">
       <table class="table table-hover">
         <thead>
           <tr>
             <th>Name</th>
             <th>Sections</th>
-            <th style="width: 180px;">Actions</th>
+            <th style="width: 320px;">Actions</th>
           </tr>
         </thead>
         <tbody>
           {% for t in templates %}
           <tr>
-            <td>{{ t.name }}</td>
+            <td>
+              {{ t.name }}
+              {% if t.is_default %}<span class="badge bg-primary ms-1">Default</span>{% endif %}
+            </td>
             <td>{{ t.sections.count }}</td>
             <td>
               <a href="{% url 'crm:newsletter_issue_create' %}?from_template={{ t.pk }}" class="btn btn-sm btn-outline-primary">Use for new issue</a>
+              {% if t.is_default %}
+              <form method="post" action="{% url 'crm:newsletter_template_set_default' t.pk %}" class="d-inline">
+                {% csrf_token %}
+                <input type="hidden" name="make_default" value="0">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Clear default</button>
+              </form>
+              {% else %}
+              <form method="post" action="{% url 'crm:newsletter_template_set_default' t.pk %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Set as default</button>
+              </form>
+              {% endif %}
               <a href="{% url 'crm:newsletter_template_edit' t.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
               <a href="{% url 'crm:newsletter_template_delete' t.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
             </td>

@@ -20,7 +20,7 @@
 <div class="card">
   <div class="card-body">
     {% if from_template %}
-    <p class="alert alert-info">Creating from template <strong>{{ from_template.name }}</strong>. Sections below are copied from the template; edit as needed.</p>
+    <p class="alert alert-info">Creating from template <strong>{{ from_template.name }}</strong>. Sections below are copied from the template; edit as needed.{% if choose_template_url %} <a href="{{ choose_template_url }}">Use a different template</a>.{% endif %}</p>
     {% endif %}
     {% if from_edition %}
     <p class="alert alert-info">Creating issue for plan edition <strong>{{ from_edition.plan.year }} {{ from_edition.quarter }} W{{ from_edition.week_number }}</strong> — {{ from_edition.weekly_theme|default:"(no theme)" }}. Fields and section are prepopulated from the plan.</p>

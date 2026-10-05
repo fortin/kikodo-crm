@@ -51,7 +51,7 @@
           </tr>
           {% empty %}
           <tr>
-            <td colspan="6" class="text-muted">No issues yet. <a href="{% url 'crm:newsletter_issue_create' %}">Create one</a> or <a href="{% url 'crm:newsletter_template_list' %}">start from a template</a>.</td>
+            <td colspan="6" class="text-muted">No issues yet. <a href="{% url 'crm:newsletter_issue_create' %}">Create one</a>.</td>
           </tr>
           {% endfor %}
         </tbody>

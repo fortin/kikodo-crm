@@ -480,8 +480,9 @@ class NewsletterTemplateForm(forms.ModelForm):
 
     class Meta:
         model = NewsletterTemplate
-        fields = ["name"]
+        fields = ["name", "is_default"]
         widgets = {"name": forms.TextInput(attrs={"placeholder": "e.g. Weekly digest"})}
+        labels = {"is_default": "Use as default for new issues"}
 
 
 class BaseNewsletterTemplateSectionFormSet(BaseInlineFormSet):

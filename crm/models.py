@@ -1204,7 +1204,9 @@ class NewsletterEdition(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="editions",
     )
-    quarter = models.CharField(max_length=2, choices=[("Q1", "Q1"), ("Q2", "Q2"), ("Q3", "Q3"), ("Q4", "Q4")])
+    quarter = models.CharField(
+        max_length=2, choices=[("Q1", "Q1"), ("Q2", "Q2"), ("Q3", "Q3"), ("Q4", "Q4")]
+    )
     week_number = models.PositiveIntegerField(help_text="Week number (1-52)")
     day_of_week = models.CharField(
         max_length=10,
@@ -1415,7 +1417,11 @@ class WelcomeAutomation(TimeStampedModel):
             base = slugify(self.name)[:60] or "automation"
             candidate = base
             n = 1
-            while WelcomeAutomation.objects.filter(slug=candidate).exclude(pk=self.pk).exists():
+            while (
+                WelcomeAutomation.objects.filter(slug=candidate)
+                .exclude(pk=self.pk)
+                .exists()
+            ):
                 n += 1
                 candidate = f"{base}-{n}"
             self.slug = candidate
@@ -1509,6 +1515,10 @@ class NewsletterTemplate(TimeStampedModel):
     """Reusable newsletter structure: named template with ordered sections (heading + Markdown body)."""
 
     name = models.CharField(max_length=255, help_text="Template name for reuse")
+    is_default = models.BooleanField(
+        default=False,
+        help_text="If set, new issues use this template without prompting.",
+    )
 
     class Meta:
         ordering = ["name"]
@@ -1517,6 +1527,17 @@ class NewsletterTemplate(TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.is_default:
+            type(self).objects.filter(is_default=True).exclude(pk=self.pk).update(
+                is_default=False
+            )
+
+    @classmethod
+    def get_default(cls):
+        return cls.objects.filter(is_default=True).prefetch_related("sections").first()
 
 
 class NewsletterTemplateSection(TimeStampedModel):
@@ -1528,7 +1549,7 @@ class NewsletterTemplateSection(TimeStampedModel):
         related_name="sections",
     )
     order = models.PositiveIntegerField(default=0, help_text="Display order")
-    heading = models.CharField(max_length=500)
+    heading = models.CharField(max_length=500, blank=True)
     body_markdown = models.TextField(
         blank=True,
         help_text="Markdown-formatted body for this section",
@@ -1552,7 +1573,9 @@ class NewsletterIssue(TimeStampedModel):
         ("published", "Published"),
     ]
 
-    title = models.CharField(max_length=500, help_text="Issue title (and blog post title)")
+    title = models.CharField(
+        max_length=500, help_text="Issue title (and blog post title)"
+    )
     slug = models.SlugField(
         max_length=500,
         unique=True,
@@ -1642,9 +1665,10 @@ class NewsletterIssue(TimeStampedModel):
         Between sections: if divider_image_url is set, insert that image; otherwise use HTML hr divider.
         No divider between the first and second sections (e.g. banner + intro flow together).
         """
-        import markdown
-        from html import escape
         import re
+        from html import escape
+
+        import markdown
 
         sections = list(self.sections.order_by("order"))
         parts = []
@@ -1662,7 +1686,7 @@ class NewsletterIssue(TimeStampedModel):
                     parts.append(
                         f'<div class="newsletter-divider">'
                         f'<img src="{url}" alt="" style="max-width:100%;height:auto;display:block;" />'
-                        f'</div>'
+                        f"</div>"
                     )
                 else:
                     parts.append('<hr class="newsletter-divider-hr" />')
@@ -1672,6 +1696,7 @@ class NewsletterIssue(TimeStampedModel):
         # Force the Compliance Unlock logo banner to a reasonable fixed display width
         # (can shrink on mobile, but won't scale up to the container width).
         if full_html:
+
             def _force_logo_banner(match: re.Match) -> str:
                 src = match.group("src")
                 alt = match.group("alt") or "The Compliance Unlock"
